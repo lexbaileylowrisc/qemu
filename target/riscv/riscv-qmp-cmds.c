@@ -245,19 +245,6 @@ CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type,
     return expansion_info;
 }
 
-/*
- * We have way too many potential CSRs and regs being added
- * regularly to register them in a static array.
- *
- * Declare an empty array instead, making get_monitor_def() use
- * the target_get_monitor_def() API directly.
- */
-const MonitorDef monitor_defs[] = { { } };
-const MonitorDef *target_monitor_defs(void)
-{
-    return monitor_defs;
-}
-
 static bool reg_is_ulong_integer(CPURISCVState *env, const char *name,
                                  target_ulong *val, bool is_gprh)
 {
