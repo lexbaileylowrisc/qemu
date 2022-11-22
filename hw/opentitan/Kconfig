@@ -8,3 +8,6 @@ config OT_AST
 
 config OT_OTP
     bool
+
+config OT_UART
+    bool
