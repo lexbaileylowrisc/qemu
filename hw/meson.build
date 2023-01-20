@@ -21,6 +21,7 @@ subdir('sparc64')
 subdir('tricore')
 subdir('xtensa')
 subdir('ibexdemo')
+subdir('opentitan')
 
 subdir('9pfs')
 subdir('acpi')
