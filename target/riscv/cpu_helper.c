@@ -2186,12 +2186,6 @@ void riscv_cpu_do_interrupt(CPUState *cs)
     int mxlen = 16 << riscv_cpu_mxl(env);
     bool nnmi_excep = false;
 
-    if (cpu->cfg.ext_smrnmi && env->rnmip && async) {
-        riscv_do_nmi(env, cause | ((target_ulong)1U << (mxlen - 1)),
-                     env->virt_enabled);
-        return;
-    }
-
     if (!async) {
         /* set tval to badaddr for traps with address information */
         switch (cause) {
