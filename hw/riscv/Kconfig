@@ -16,7 +16,7 @@ config IBEXDEMO
     bool
     select IBEX
     select IBEX_COMMON
-    select SIFIVE_PLIC
+    select IBEXDEMO_UART
     select UNIMP
 
 config MICROCHIP_PFSOC
