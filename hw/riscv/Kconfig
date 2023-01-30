@@ -16,6 +16,7 @@ config IBEXDEMO
     bool
     select IBEX
     select IBEX_COMMON
+    select IBEXDEMO_TIMER
     select IBEXDEMO_UART
     select UNIMP
 
