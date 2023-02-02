@@ -3599,6 +3599,7 @@ if have_system
     'hw/dma',
     'hw/fsi',
     'hw/hyperv',
+    'hw/ibexdemo',
     'hw/i2c',
     'hw/i386',
     'hw/i386/xen',
