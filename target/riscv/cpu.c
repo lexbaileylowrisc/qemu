@@ -3093,6 +3093,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
         .cfg.mtvec = 0x00000001u,
 #ifndef CONFIG_USER_ONLY
         .cfg.max_satp_mode = VM_1_10_MBARE,
+        .custom_csrs = ibex_csr_list,
 #endif
     ),
 
