@@ -31,16 +31,16 @@
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
-#include "hw/irq.h"
+#include "hw/core/irq.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_otp.h"
-#include "hw/qdev-properties-system.h"
-#include "hw/qdev-properties.h"
-#include "hw/registerfields.h"
+#include "hw/core/qdev-properties-system.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
-#include "hw/sysbus.h"
-#include "sysemu/block-backend.h"
+#include "hw/core/sysbus.h"
+#include "system/block-backend.h"
 #include "trace.h"
 
 
@@ -1220,9 +1220,8 @@ static void ot_otp_load_hw_cfg(OtOTPState *s)
         (uint8_t)FIELD_EX32(cfg, HW_CFG_ENABLE, EN_ENTROPY_SRC_FW_OVER);
 }
 
-static Property ot_otp_properties[] = {
+static const Property ot_otp_properties[] = {
     DEFINE_PROP_DRIVE("drive", OtOTPState, blk),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_otp_regs_ops = {
@@ -1400,11 +1399,11 @@ static void ot_otp_init(Object *obj)
     s->dai_delay = timer_new_ns(QEMU_CLOCK_VIRTUAL, &ot_otp_complete_dai, s);
 }
 
-static void ot_otp_class_init(ObjectClass *klass, void *data)
+static void ot_otp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = &ot_otp_reset;
+    dc->legacy_reset = &ot_otp_reset;
     dc->realize = &ot_otp_realize;
     device_class_set_props(dc, ot_otp_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
