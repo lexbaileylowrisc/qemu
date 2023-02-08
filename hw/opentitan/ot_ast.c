@@ -35,11 +35,11 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_ast.h"
-#include "hw/qdev-properties-system.h"
-#include "hw/qdev-properties.h"
-#include "hw/registerfields.h"
+#include "hw/core/qdev-properties-system.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/registerfields.h"
 #include "hw/riscv/ibex_common.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "trace.h"
 
 /* clang-format off */
@@ -281,10 +281,6 @@ static void ot_ast_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_ast_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static const MemoryRegionOps ot_ast_regs_ops = {
     .read = &ot_ast_regs_read,
     .write = &ot_ast_regs_write,
@@ -352,12 +348,11 @@ static void ot_ast_init(Object *obj)
     s->regsb = g_new0(uint32_t, REGSB_COUNT);
 }
 
-static void ot_ast_class_init(ObjectClass *klass, void *data)
+static void ot_ast_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = &ot_ast_reset;
-    device_class_set_props(dc, ot_ast_properties);
+    dc->legacy_reset = &ot_ast_reset;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
