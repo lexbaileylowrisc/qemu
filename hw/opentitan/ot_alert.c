@@ -36,12 +36,12 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
-#include "hw/qdev-properties-system.h"
-#include "hw/qdev-properties.h"
-#include "hw/registerfields.h"
+#include "hw/core/qdev-properties-system.h"
+#include "hw/core/qdev-properties.h"
+#include "hw/core/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
-#include "hw/sysbus.h"
+#include "hw/core/sysbus.h"
 #include "trace.h"
 
 #define PARAM_N_ALERTS    65u
@@ -600,10 +600,6 @@ static void ot_alert_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_alert_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static const MemoryRegionOps ot_alert_regs_ops = {
     .read = &ot_alert_regs_read,
     .write = &ot_alert_regs_write,
@@ -651,12 +647,11 @@ static void ot_alert_init(Object *obj)
     }
 }
 
-static void ot_alert_class_init(ObjectClass *klass, void *data)
+static void ot_alert_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = &ot_alert_reset;
-    device_class_set_props(dc, ot_alert_properties);
+    dc->legacy_reset = &ot_alert_reset;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
