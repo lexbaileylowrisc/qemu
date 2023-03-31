@@ -41,6 +41,7 @@ system_ss.add(files(
   'qdev-fw.c',
   'qdev-hotplug.c',
   'qdev-properties-system.c',
+  'rust_demangle.c',
   'reset.c',
   'sysbus.c',
   'vm-change-state-handler.c',
