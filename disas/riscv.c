@@ -984,6 +984,14 @@ typedef enum {
     rv_op_ssamoswap_d = 953,
     rv_op_c_sspush = 954,
     rv_op_c_sspopchk = 955,
+    rv_op_crc32_b = 956,
+    rv_op_crc32_h = 957,
+    rv_op_crc32_w = 958,
+    rv_op_crc32_d = 959,
+    rv_op_crc32c_b = 960,
+    rv_op_crc32c_h = 961,
+    rv_op_crc32c_w = 962,
+    rv_op_crc32c_d = 963,
 } rv_op;
 
 /* register names */
@@ -2254,6 +2262,14 @@ const rv_opcode_data rvi_opcode_data[] = {
       rv_op_sspush, 0 },
     { "c.sspopchk", rv_codec_cmop_ss, rv_fmt_rs1, NULL, rv_op_sspopchk,
       rv_op_sspopchk, 0 },
+    { "crc32.b", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32.h", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32.w", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32.d", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.b", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.h", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.w", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
+    { "crc32c.d", rv_codec_r, rv_fmt_rd_rs1, NULL, 0, 0, 0 },
 };
 
 /* CSR names */
@@ -2924,6 +2940,12 @@ static void decode_inst_opcode(rv_decode *dec, rv_isa isa)
                       /* 0b0000011 */
                     case 0b0000100: op = rv_op_sext_b; break;
                     case 0b0000101: op = rv_op_sext_h; break;
+                    case 0b0010000: op = rv_op_crc32_b; break;
+                    case 0b0010001: op = rv_op_crc32_h; break;
+                    case 0b0010010: op = rv_op_crc32_w; break;
+                    case 0b0011000: op = rv_op_crc32c_b; break;
+                    case 0b0011001: op = rv_op_crc32c_h; break;
+                    case 0b0011010: op = rv_op_crc32c_w; break;
                     }
                     break;
                 }
