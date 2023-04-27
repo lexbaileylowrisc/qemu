@@ -3072,18 +3072,28 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_LOWRISC_IBEX, TYPE_RISCV_VENDOR_CPU,
         .misa_mxl_max = MXL_RV32,
-        .misa_ext = RVI | RVM | RVC | RVU,
+        .misa_ext = RVI | RVC | RVU,
         .priv_spec = PRIV_VERSION_1_12_0,
-        .cfg.max_satp_mode = VM_1_10_MBARE,
         .cfg.ext_zifencei = true,
         .cfg.ext_zicsr = true,
-        .cfg.pmp = true,
         .cfg.ext_smepmp = true,
-
-        .cfg.ext_zba = true,
-        .cfg.ext_zbb = true,
-        .cfg.ext_zbc = true,
-        .cfg.ext_zbs = true
+        .cfg.ext_zawrs = false,
+        .cfg.ext_zihintpause = false,
+        .cfg.mmu = false,
+        .cfg.pmp = false,
+        .cfg.ext_sstc = false,
+        .cfg.ext_svadu = false,
+        .cfg.ext_zba = false,
+        .cfg.ext_zbb = false,
+        .cfg.ext_zbc = false,
+        .cfg.ext_zbs = false,
+        .cfg.ext_zicbom = false,
+        .cfg.ext_zicboz = false,
+        .cfg.marchid = 0x16u,
+        .cfg.mtvec = 0x00000001u,
+#ifndef CONFIG_USER_ONLY
+        .cfg.max_satp_mode = VM_1_10_MBARE,
+#endif
     ),
 
     DEFINE_RISCV_CPU(TYPE_RISCV_CPU_SIFIVE_E31, TYPE_RISCV_CPU_SIFIVE_E,
