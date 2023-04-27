@@ -8,6 +8,7 @@
 BOOL_FIELD(ext_zba)
 BOOL_FIELD(ext_zbb)
 BOOL_FIELD(ext_zbc)
+BOOL_FIELD(ext_zbr)
 BOOL_FIELD(ext_zbkb)
 BOOL_FIELD(ext_zbkc)
 BOOL_FIELD(ext_zbkx)
