@@ -4452,6 +4452,7 @@ M: Loïc Lefort <loic@rivosinc.com>
 S: Supported
 F: hw/opentitan/*
 F: include/hw/opentitan/*
+F: scripts/opentitan/*
 
 Build and test automation
 -------------------------
