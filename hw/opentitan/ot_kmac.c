@@ -612,6 +612,16 @@ static void ot_kmac_process(void *opaque)
                          s->current_app->req.msg_len);
             s->current_app->req_pending = false;
             if (s->current_app->req.last) {
+                /* append right-encoded output width if KMAC */
+                if (cfg->mode == OT_KMAC_MODE_KMAC) {
+                    uint8_t enc_out_len[3];
+                    uint32_t output_length = OT_KMAC_APP_DIGEST_BYTES * 8u;
+                    enc_out_len[0] = (output_length >> 8u) & 0xffu;
+                    enc_out_len[1] = output_length & 0xffu;
+                    enc_out_len[2] = 2u;
+                    sha3_process(&s->ltc_state, enc_out_len,
+                                 sizeof(enc_out_len));
+                }
                 /* go to PROCESSING state, response will be sent there */
                 ot_kmac_change_fsm_state(s, KMAC_ST_PROCESSING);
             } else {
