@@ -321,12 +321,13 @@ typedef enum {
     LC_TK_COUNT,
 } OtLcCtrlToken;
 
-/* ife cycle state group diversification value for keymgr */
+/* Life cycle state group diversification value for keymgr */
 typedef enum {
     LC_DIV_INVALID,
     LC_DIV_TEST_DEV_RMA,
     LC_DIV_PROD,
-} OtLcCtrlKeyMgrDiv;
+    LC_DIV_COUNT,
+} OtLcCtrlKeyMgrDivType;
 
 /* Ownership states */
 typedef enum {
@@ -377,7 +378,7 @@ struct OtLcCtrlState {
     uint32_t xregs[EXCLUSIVE_SLOTS_COUNT][EXCLUSIVE_REGS_COUNT];
     OtLcState lc_state;
     uint32_t lc_tcount;
-    OtLcCtrlKeyMgrDiv km_div;
+    OtLcCtrlKeyMgrDivType km_div_type;
     OtOTPTokenValue hash_token;
     OtLcCtrlIf owner;
     OtLcCtrlFsmState state;
@@ -387,6 +388,8 @@ struct OtLcCtrlState {
     OtLcCtrlOwnershipValue *ownerships;
     OtLcCtrlSocDbgValue *socdbgs;
     OtOTPTokenValue *hashed_tokens;
+    uint8_t km_divs[LC_DIV_COUNT][OT_LC_KEYMGR_DIV_BYTES];
+
     uint32_t hashed_token_bm;
     struct {
         uint32_t value;
@@ -403,6 +406,7 @@ struct OtLcCtrlState {
     OtOTPState *otp_ctrl;
     OtKMACState *kmac;
     char *raw_unlock_token_xstr;
+    char *km_div_xstrs[LC_DIV_COUNT];
     OtLcCtrlTransitionConfig trans_cfg[LC_CTRL_TRANS_COUNT];
     uint16_t silicon_creator_id;
     uint16_t product_id;
@@ -750,7 +754,7 @@ static void ot_lc_ctrl_update_alerts(OtLcCtrlState *s)
 static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
 {
     uint32_t sigbm = 0;
-    OtLcCtrlKeyMgrDiv div = LC_DIV_INVALID;
+    OtLcCtrlKeyMgrDivType div_type = LC_DIV_INVALID;
 
     switch (s->state) {
     case ST_RESET:
@@ -786,13 +790,13 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             sigbm = LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
                     LC_BCAST_BIT(NVM_DEBUG_EN) | LC_BCAST_BIT(HW_DEBUG_EN) |
                     LC_BCAST_BIT(CPU_EN) | LC_BCAST_BIT(ISO_PART_SW_WR_EN);
-            div = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_TEST_DEV_RMA;
             break;
         case LC_STATE_TESTUNLOCKED7:
             sigbm = LC_BCAST_BIT(RAW_TEST_RMA) | LC_BCAST_BIT(DFT_EN) |
                     LC_BCAST_BIT(HW_DEBUG_EN) | LC_BCAST_BIT(CPU_EN) |
                     LC_BCAST_BIT(ISO_PART_SW_WR_EN);
-            div = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_TEST_DEV_RMA;
             break;
         case LC_STATE_PROD:
         case LC_STATE_PRODEND:
@@ -813,7 +817,7 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             if (s->regs[R_LC_ID_STATE] == LC_ID_STATE_PERSONALIZED) {
                 sigbm |= LC_BCAST_BIT(SEED_HW_RD_EN);
             }
-            div = LC_DIV_PROD;
+            div_type = LC_DIV_PROD;
             break;
         case LC_STATE_DEV:
             sigbm =
@@ -826,7 +830,7 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
             if (s->regs[R_LC_ID_STATE] == LC_ID_STATE_PERSONALIZED) {
                 sigbm |= LC_BCAST_BIT(SEED_HW_RD_EN);
             }
-            div = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_TEST_DEV_RMA;
             break;
         case LC_STATE_RMA:
             sigbm =
@@ -838,7 +842,7 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
                 LC_BCAST_BIT(OWNER_SEED_SW_RW_EN) |
                 LC_BCAST_BIT(ISO_PART_SW_RD_EN) |
                 LC_BCAST_BIT(ISO_PART_SW_WR_EN) | LC_BCAST_BIT(SEED_HW_RD_EN);
-            div = LC_DIV_TEST_DEV_RMA;
+            div_type = LC_DIV_TEST_DEV_RMA;
             break;
         case LC_STATE_SCRAP:
         default:
@@ -860,7 +864,7 @@ static void ot_lc_ctrl_update_broadcast(OtLcCtrlState *s)
         break;
     }
 
-    s->km_div = div;
+    s->km_div_type = div_type;
 
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->broadcasts); ix++) {
         bool level = (bool)(sigbm & (1u << ix));
@@ -1478,7 +1482,7 @@ static inline size_t ot_lc_ctrl_get_keccak_rate_bytes(size_t kstrength)
     return (KECCAK_STATE_BITS - 2u * kstrength) / 8u;
 }
 
-static void ot_lc_ctrl_compute_predefined_tokens(OtLcCtrlState *s, Error **errp)
+static void ot_lc_ctrl_compute_predefined_tokens(OtLcCtrlState *s)
 {
     if (!s->raw_unlock_token_xstr) {
         trace_ot_lc_ctrl_token_missing(s->ot_id, "raw_unlock_token");
@@ -1490,15 +1494,15 @@ static void ot_lc_ctrl_compute_predefined_tokens(OtLcCtrlState *s, Error **errp)
 
     size_t len = strlen(s->raw_unlock_token_xstr);
     if (len != sizeof(OtOTPTokenValue) * 2u) {
-        error_setg(errp, "%s: %s invalid raw_unlock_token length\n", __func__,
-                   s->ot_id);
+        error_setg(&error_fatal, "%s: %s invalid raw_unlock_token length\n",
+                   __func__, s->ot_id);
         return;
     }
 
     if (ot_common_parse_hexa_str(raw_unlock_token, s->raw_unlock_token_xstr,
                                  sizeof(OtOTPTokenValue), true, false)) {
-        error_setg(errp, "%s: %s unable to parse raw_unlock_token\n", __func__,
-                   s->ot_id);
+        error_setg(&error_fatal, "%s: %s unable to parse raw_unlock_token\n",
+                   __func__, s->ot_id);
         return;
     }
 
@@ -2104,6 +2108,30 @@ static void ot_lc_ctrl_configure_transitions(
     g_free(first);
 }
 
+static void ot_lc_ctrl_configure_km_div(OtLcCtrlState *s)
+{
+    for (unsigned ix = 0; ix < LC_DIV_COUNT; ix++) {
+        if (!s->km_div_xstrs[ix]) {
+            trace_ot_lc_ctrl_km_div_missing(s->ot_id, ix);
+            continue;
+        }
+
+        size_t len = strlen(s->km_div_xstrs[ix]);
+        if (len != OT_LC_KEYMGR_DIV_BYTES * 2u) {
+            error_setg(&error_fatal, "%s: %s invalid km_div #%u length\n",
+                       __func__, s->ot_id, ix);
+            continue;
+        }
+
+        if (ot_common_parse_hexa_str(s->km_divs[ix], s->km_div_xstrs[ix],
+                                     OT_LC_KEYMGR_DIV_BYTES, true, true)) {
+            error_setg(&error_fatal, "%s: %s unable to parse km_div #%u\n",
+                       __func__, s->ot_id, ix);
+            continue;
+        }
+    }
+}
+
 static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtLcCtrlState, ot_id),
     DEFINE_PROP_LINK("otp_ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP,
@@ -2111,6 +2139,10 @@ static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_LINK("kmac", OtLcCtrlState, kmac, TYPE_OT_KMAC, OtKMACState *),
     DEFINE_PROP_STRING("raw_unlock_token", OtLcCtrlState,
                        raw_unlock_token_xstr),
+    DEFINE_PROP_STRING("invalid", OtLcCtrlState, km_div_xstrs[LC_DIV_INVALID]),
+    DEFINE_PROP_STRING("production", OtLcCtrlState, km_div_xstrs[LC_DIV_PROD]),
+    DEFINE_PROP_STRING("test_dev_rma", OtLcCtrlState,
+                       km_div_xstrs[LC_DIV_TEST_DEV_RMA]),
     DEFINE_PROP_STRING("lc_state_first", OtLcCtrlState,
                        trans_cfg[LC_CTRL_TRANS_LC_STATE]
                            .state[LC_CTRL_TSTATE_FIRST]),
@@ -2202,7 +2234,7 @@ static void ot_lc_ctrl_reset_enter(Object *obj, ResetType type)
 
     s->lc_state = LC_STATE_INVALID;
     s->lc_tcount = LC_TRANSITION_COUNT_MAX + 1u;
-    s->km_div = LC_DIV_INVALID;
+    s->km_div_type = LC_DIV_INVALID;
 
     /*
      * do not broadcast the current states, wait for initialization to happen,
@@ -2263,7 +2295,8 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
         ot_lc_ctrl_configure_transitions(s, LC_CTRL_TRANS_SOCDBG,
                                          (uint16_t *)s->socdbgs);
     }
-    ot_lc_ctrl_compute_predefined_tokens(s, &error_fatal);
+    ot_lc_ctrl_configure_km_div(s);
+    ot_lc_ctrl_compute_predefined_tokens(s);
 }
 
 static void ot_lc_ctrl_init(Object *obj)

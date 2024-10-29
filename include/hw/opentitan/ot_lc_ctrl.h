@@ -59,4 +59,10 @@ typedef enum {
     OT_LC_BROADCAST_COUNT,
 } OtLcCtrlBroadcast;
 
+#define OT_LC_KEYMGR_DIV_BYTES 16u /* 128 bits */
+
+typedef struct {
+    uint8_t data[OT_LC_KEYMGR_DIV_BYTES];
+} OtLcCtrlKeyMgrDiv;
+
 #endif /* HW_OPENTITAN_OT_LC_CTRL_H */
