@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2024 Rivos, Inc.
+# Copyright (c) 2023-2025 Rivos, Inc.
 # SPDX-License-Identifier: Apache2
 
 """Lifecycle helpers.
@@ -6,8 +6,9 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
+from binascii import hexlify, unhexlify
 from logging import getLogger
-from typing import TextIO
+from typing import Optional, TextIO
 import re
 
 from ot.util.misc import camel_to_snake_case
@@ -21,6 +22,7 @@ class OtpConstants:
         self._log = getLogger('otp.const')
         self._consts: dict[str, list[str]] = {}
         self._enums: dict[str, dict[str, int]] = {}
+        self._defaults: list[Optional[bytes]] = []
 
     def load(self, svp: TextIO):
         """Decode OTP information.
@@ -56,6 +58,53 @@ class OtpConstants:
                 consts.append(cmo.group(2).lower())
             # RTL order in array is reversed
             consts.reverse()
+        #  +parameter +logic +\[\d+:0\] +PartInvDefault += +\d+'\(\{(.*)\}\);
+        inv_default = []
+        for imo in re.finditer(r"(?s) +parameter +logic +\[\d+:0\] +"
+                               r"PartInvDefault += +(\d+)'\(\{(.*)\}\);",
+                               svdata):
+            if inv_default:
+                raise ValueError('PartInvDefault redefined')
+            total_byte_count = int(imo.group(1)) // 8
+            for pmo in re.finditer(r"(\d+)'\(\{([^\}]*)\}\)", imo.group(2)):
+                part_byte_count = int(pmo.group(1)) // 8
+                chunks = []
+                for bmo in re.finditer(r"(\d+)'h([0-9A-Fa-f]+)", pmo.group(2)):
+                    byte_count = int(bmo.group(1)) // 8
+                    hexa_str = bmo.group(2)
+                    hexa_str_len = len(hexa_str)
+                    exp_len = byte_count * 2
+                    if hexa_str_len < exp_len:
+                        pad_str = '0' * (exp_len - hexa_str_len)
+                        hexa_str = f'{pad_str}{hexa_str}'
+                        hexa_str_len += 1
+                    hexa_bytes = unhexlify(hexa_str)
+                    assert len(hexa_bytes) == byte_count
+                    chunks.append(hexa_bytes)
+                chunk_byte_count = sum(len(c) for c in chunks)
+                if chunk_byte_count != part_byte_count:
+                    raise RuntimeError('Invalid partition default bytes')
+                # RTL order is last-to-first
+                inv_default.append(list(reversed(chunks)))
+        byte_count = sum(len(c) for part in inv_default for c in part)
+        if byte_count != total_byte_count:
+            raise RuntimeError('Invalid partition default bytes')
+        # RTL order is last-to-first
+        inv_default.reverse()
+        self._defaults.clear()
+        for pno, part_chunks in enumerate(inv_default):
+            last_part = pno == len(inv_default) - 1
+            # last partition does not have digest,
+            # all digests are 8-byte long
+            if not last_part and len(part_chunks[-1]) == 8:
+                check_chunks = part_chunks[:-1]
+            else:
+                check_chunks = part_chunks
+            if not any(any(c) for c in check_chunks):
+                self._defaults.append(None)
+                continue
+            defaults = b''.join(bytes(reversed(c)) for c in part_chunks)
+            self._defaults.append(defaults)
 
     def get_enums(self) -> list[str]:
         """Return a list of parsed enumerations."""
@@ -78,3 +127,20 @@ class OtpConstants:
                 oname = f"{prefix}_{kname.split('_', 1)[-1]}"
                 odict[oname] = values[idx]
         return odict
+
+    def get_partition_inv_defaults(self, partition: int) -> Optional[list[str]]:
+        """Return the invalid default values for a partition, if any.
+           Partition with only digest defaults are considered without default
+           values.
+
+           :param partition: the partition index
+           :return: either None or the default hex-encoded bytes, including the
+                    digest
+        """
+        try:
+            defaults = self._defaults[partition]
+            if not defaults:
+                return defaults
+            return hexlify(defaults).decode()
+        except IndexError as exc:
+            raise ValueError(f'No such partition:{partition}') from exc

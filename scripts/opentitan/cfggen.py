@@ -250,6 +250,15 @@ class OtConfiguration:
             otpconst.load(cfp)
         self._otp.update(otpconst.get_digest_pair('cnsty_digest', 'digest'))
         self._otp.update(otpconst.get_digest_pair('sram_data_key', 'sram'))
+        idx = 0
+        while True:
+            try:
+                defaults = otpconst.get_partition_inv_defaults(idx)
+                if defaults:
+                    self._otp[f'inv_default_part_{idx}'] = defaults
+                idx += 1
+            except ValueError:
+                break
 
     def save(self, variant: str, socid: Optional[str], count: Optional[int],
              ofp: Optional[TextIO]) -> None:
