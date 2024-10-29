@@ -125,6 +125,10 @@ class OtConfiguration:
                 self._load_top_values(module, self._otp, False,
                                       r'RndCnst(.*)Init')
                 continue
+            if modtype == 'lc_ctrl':
+                self._load_top_values(module, self._lc, False,
+                                      r'RndCnstLcKeymgrDiv(.*)')
+                continue
         clocks = cfg.get('clocks', {})
         for clock in clocks.get('srcs', []):
             name = clock['name']
