@@ -814,6 +814,7 @@ struct OtOTPDjState {
     uint8_t digest_const[16u];
     uint64_t sram_iv;
     uint8_t sram_const[16u];
+    uint8_t *inv_default_parts[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
 
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
@@ -828,6 +829,7 @@ struct OtOTPDjState {
     char *digest_iv_xstr;
     char *sram_const_xstr;
     char *sram_iv_xstr;
+    char *inv_default_part_xstrs[ARRAY_SIZE(OtOTPPartDescs)]; /* may be NULL */
     uint8_t edn_ep;
     bool fatal_escalate;
 };
@@ -3947,6 +3949,62 @@ static void ot_otp_dj_configure_sram(OtOTPDjState *s)
     s->sram_iv = ldq_le_p(sram_iv);
 }
 
+static void ot_otp_dj_configure_inv_default_parts(OtOTPDjState *s)
+{
+    for (unsigned ix = 0; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
+        if (!s->inv_default_part_xstrs[ix]) {
+            continue;
+        }
+
+        const OtOTPPartDesc *part = &OtOTPPartDescs[ix];
+
+        size_t len;
+
+        len = strlen(s->inv_default_part_xstrs[ix]);
+        if (len != part->size * 2u) {
+            error_setg(&error_fatal,
+                       "%s: %s invalid inv_default_part[%u] length\n", __func__,
+                       s->ot_id, ix);
+            return;
+        }
+
+        g_assert(!s->inv_default_parts[ix]);
+
+        s->inv_default_parts[ix] = g_new0(uint8_t, part->size + 1u);
+        if (ot_common_parse_hexa_str(s->inv_default_parts[ix],
+                                     s->inv_default_part_xstrs[ix], part->size,
+                                     false, true)) {
+            error_setg(&error_fatal,
+                       "%s: %s unable to parse inv_default_part[%u]\n",
+                       __func__, s->ot_id, ix);
+            return;
+        }
+
+        TRACE_OTP("inv_default_part[%s] %s", PART_NAME(ix),
+                  ot_otp_hexdump(s->inv_default_parts[ix], part->size));
+    }
+}
+
+static void ot_otp_dj_class_add_inv_def_props(OtOTPClass *odc)
+{
+    for (unsigned ix = 0; ix < ARRAY_SIZE(OtOTPPartDescs); ix++) {
+        if (!OtOTPPartDescs[ix].buffered) {
+            continue;
+        }
+
+        Property *prop = g_new0(Property, 1u);
+
+        prop->name = g_strdup_printf("inv_default_part_%u", ix);
+        prop->info = &qdev_prop_string;
+        prop->offset = offsetof(OtOTPDjState, inv_default_part_xstrs) +
+                       sizeof(char *) * ix;
+
+        object_class_property_add(OBJECT_CLASS(odc), prop->name,
+                                  prop->info->name, prop->info->get,
+                                  prop->info->set, prop->info->release, prop);
+    }
+}
+
 static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTPDjState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPDjState, blk),
@@ -4101,6 +4159,7 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
     ot_otp_dj_configure_scrmbl_key(s);
     ot_otp_dj_configure_digest(s);
     ot_otp_dj_configure_sram(s);
+    ot_otp_dj_configure_inv_default_parts(s);
 }
 
 static void ot_otp_dj_init(Object *obj)
@@ -4200,6 +4259,8 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     oc->get_entropy_cfg = &ot_otp_dj_get_entropy_cfg;
     oc->get_otp_key = &ot_otp_dj_get_otp_key;
     oc->program_req = &ot_otp_dj_program_req;
+
+    ot_otp_dj_class_add_inv_def_props(oc);
 }
 
 static const TypeInfo ot_otp_dj_info = {
