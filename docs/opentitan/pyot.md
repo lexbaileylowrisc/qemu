@@ -11,7 +11,8 @@ usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
                [-e BUS] [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM]
                [-r ELF] [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z]
                [-R] [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
-               [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
+               [--log-udp UDP_PORT] [--debug LOGGER] [--info LOGGER]
+               [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -77,6 +78,7 @@ Extras:
   -d                    enable debug mode
   --quiet               quiet logging: only be verbose on errors
   --log-time            show local time in log messages
+  --log-udp UDP_PORT    Change UDP port for log messages, use 0 to disable
   --debug LOGGER        assign debug level to logger(s)
   --info LOGGER         assign info level to logger(s)
   --warn LOGGER         assign warning level to logger(s)
@@ -178,6 +180,8 @@ This tool may be used in two ways, which can be combined:
 * `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 * `--quiet` only emit verbose log traces if an error is detected
 * `--log-time` show local time before each logged message
+* `--log-udp` change the port of the UDP log service on specified UDP port. Use `0` to disable the
+  service.
 * `--debug` enable the debug level for the selected logger, may be repeated
 * `--info` enable the info level for the selected logger, may be repeated
 * `--warn` enable the warning level for the selected logger, may be repeated
@@ -379,6 +383,7 @@ Sample config for running some non-OpenTitan tests:
   * `${UTPATH}` absolute path to the executed OT test
   * `${UTDIR}` absolute path to the directory containing the executed OT test
   * `${UTFILE}` file name of the executed OT test (without directory specifier)
+  * `${UDPLOG}` UDP log service, if UDP log service has been enabled, see `--log-udp` option.
 
 * `testdir`
   This section may be used to define the default path where to look for tests to run.
