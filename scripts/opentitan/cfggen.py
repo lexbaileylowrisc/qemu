@@ -98,6 +98,8 @@ class OtConfiguration:
         self._roms: dict[Optional[int], dict[str, str]] = {}
         self._otp: dict[str, str] = {}
         self._lc: dict[str, str] = {}
+        self._keymgr: dict[str, str] = {}
+        self._keymgr_name: Optional[str] = None
         self._top_clocks: dict[str, OtClock] = {}
         self._sub_clocks: dict[str, OtDerivedClock] = {}
         self._clock_groups: dict[str, OtClockGroup] = {}
@@ -128,6 +130,11 @@ class OtConfiguration:
             if modtype == 'lc_ctrl':
                 self._load_top_values(module, self._lc, False,
                                       r'RndCnstLcKeymgrDiv(.*)')
+                continue
+            if modtype.startswith('keymgr'):
+                self._keymgr_name = modtype
+                self._load_top_values(module, self._keymgr, False,
+                                      r'RndCnst((?:.*)Seed)')
                 continue
         clocks = cfg.get('clocks', {})
         for clock in clocks.get('srcs', []):
@@ -269,6 +276,7 @@ class OtConfiguration:
         self._generate_roms(cfg, socid, count or 1)
         self._generate_otp(cfg, variant, socid)
         self._generate_life_cycle(cfg, socid)
+        self._generate_key_mgr(cfg, socid)
         self._generate_ast(cfg, variant, socid)
         self._generate_clkmgr(cfg, socid)
         self._generate_pwrmgr(cfg, socid)
@@ -362,6 +370,18 @@ class OtConfiguration:
             self.add_pair(lcdata, kname, value)
         lcdata = dict(sorted(lcdata.items()))
         cfg[f'ot_device "{lcname}"'] = lcdata
+
+    def _generate_key_mgr(self, cfg: ConfigParser,
+                          socid: Optional[str] = None) -> None:
+        nameargs = [f'ot-{self._keymgr_name}']
+        if socid:
+            nameargs.append(socid)
+        kmname = '.'.join(nameargs)
+        kmdata = {}
+        for kname, value in self._keymgr.items():
+            self.add_pair(kmdata, kname, value)
+            kmdata = dict(sorted(kmdata.items()))
+            cfg[f'ot_device "{kmname}"'] = kmdata
 
     def _generate_ast(self, cfg: ConfigParser, variant: str,
                          socid: Optional[str] = None) -> None:
