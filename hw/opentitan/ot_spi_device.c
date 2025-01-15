@@ -310,7 +310,7 @@ static_assert(SPI_SRAM_END_OFFSET == 0xe80u, "Invalid SRAM definition");
 
 #define FLASH_READ_BUFFER_SIZE (2u * SPI_SRAM_READ_SIZE)
 
-#define SPI_DEFAULT_TX_VALUE  0xffu
+#define SPI_DEFAULT_TX_VALUE  ((uint8_t)0xffu)
 #define SPI_FLASH_BUFFER_SIZE 256u
 
 typedef enum {
@@ -1915,7 +1915,7 @@ static void ot_spi_device_chr_handle_header(OtSPIDeviceState *s)
 
 static void ot_spi_device_chr_send_discard(OtSPIDeviceState *s, unsigned count)
 {
-    const uint8_t buf[1u] = { (uint8_t)0xffu };
+    const uint8_t buf[1u] = { SPI_DEFAULT_TX_VALUE };
 
     while (count--) {
         if (qemu_chr_fe_backend_connected(&s->chr)) {
