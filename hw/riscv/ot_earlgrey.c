@@ -73,6 +73,7 @@
 #include "hw/ssi/ssi.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/hw_accel.h"
+#include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
 
 /* ------------------------------------------------------------------------ */
@@ -1158,8 +1159,15 @@ struct OtEGBoardState {
 struct OtEGMachineState {
     MachineState parent_obj;
 
+    ResettableState reset;
+
     bool no_epmp_cfg;
     bool ignore_elf_entry;
+};
+
+struct OtEGMachineClass {
+    MachineClass parent_class;
+    ResettablePhases parent_phases;
 };
 
 /* ------------------------------------------------------------------------ */
@@ -1562,6 +1570,37 @@ ot_eg_machine_set_ignore_elf_entry(Object *obj, bool value, Error **errp)
     s->ignore_elf_entry = value;
 }
 
+static ResettableState *ot_eg_get_reset_state(Object *obj)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
+
+    return &s->reset;
+}
+
+static void ot_eg_reset_hold(Object *obj, ResetType type)
+{
+    (void)obj;
+
+    /*
+     * The way the resettable APIs are implemented does not allow to call the
+     * legacy qemu_devices_reset from the enter phase, where a global static
+     * variable singleton enforces that entering reset is exclusive. However
+     * qemu_devices_reset implements the full enter/hold/exit reset sequence.
+     * This legacy function is therefore invoked from the hold stage of the
+     * machine reset sequence.
+     */
+    qemu_devices_reset(type);
+}
+
+static void ot_eg_machine_reset(MachineState *ms, ResetType reason)
+{
+    OtEGMachineState *s = RISCV_OT_EG_MACHINE(ms);
+
+    g_assert(reason == RESET_TYPE_COLD);
+
+    resettable_reset(OBJECT(s), reason);
+}
+
 static void ot_eg_machine_instance_init(Object *obj)
 {
     OtEGMachineState *s = RISCV_OT_EG_MACHINE(obj);
@@ -1583,6 +1622,13 @@ static void ot_eg_machine_init(MachineState *state)
     DeviceState *dev = qdev_new(TYPE_RISCV_OT_EG_BOARD);
 
     object_property_add_child(OBJECT(state), "board", OBJECT(dev));
+
+    /*
+     * any object not part of the default system bus hiearchy is never reset
+     * otherwise
+     */
+    qemu_register_reset(resettable_cold_reset_fn, dev);
+
     qdev_realize(dev, NULL, &error_fatal);
 }
 
@@ -1593,12 +1639,25 @@ static void ot_eg_machine_class_init(ObjectClass *oc, void *data)
 
     mc->desc = "RISC-V Board compatible with OpenTitan EarlGrey FPGA platform";
     mc->init = ot_eg_machine_init;
+    mc->reset = &ot_eg_machine_reset;
     mc->max_cpus = 1u;
     mc->default_cpu_type = ot_eg_soc_devices[OT_EG_SOC_DEV_HART].type;
     const IbexDeviceDef *sram =
         &ot_eg_soc_devices[OT_EG_SOC_DEV_SRAM_MAIN_CTRL];
     mc->default_ram_id = sram->type;
     mc->default_ram_size = SRAM_MAIN_SIZE;
+    /*
+     * Implement the resettable interface to ensure the proper initialization
+     * sequence.
+     * The hold stage is used to perform most of the device reset sequence.
+     */
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
+
+    rc->get_state = &ot_eg_get_reset_state;
+
+    OtEGMachineClass *sc = RISCV_OT_EG_MACHINE_CLASS(oc);
+    resettable_class_set_parent_phases(rc, NULL, &ot_eg_reset_hold, NULL,
+                                       &sc->parent_phases);
 }
 
 static const TypeInfo ot_eg_machine_type_info = {
@@ -1606,7 +1665,9 @@ static const TypeInfo ot_eg_machine_type_info = {
     .parent = TYPE_MACHINE,
     .instance_size = sizeof(OtEGMachineState),
     .instance_init = &ot_eg_machine_instance_init,
+    .class_size = sizeof(OtEGMachineClass),
     .class_init = &ot_eg_machine_class_init,
+    .interfaces = (InterfaceInfo[]){ { TYPE_RESETTABLE_INTERFACE }, {} },
 };
 
 static void ot_eg_machine_register_types(void)

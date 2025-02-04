@@ -2,6 +2,7 @@
  * QEMU RISC-V Board Compatible with OpenTitan EarlGrey FPGA platform
  *
  * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 lowRISC contributors.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -27,7 +28,7 @@
 #define OT_EARLGREY "ot-earlgrey"
 
 #define TYPE_RISCV_OT_EG_MACHINE MACHINE_TYPE_NAME(OT_EARLGREY)
-OBJECT_DECLARE_SIMPLE_TYPE(OtEGMachineState, RISCV_OT_EG_MACHINE)
+OBJECT_DECLARE_TYPE(OtEGMachineState, OtEGMachineClass, RISCV_OT_EG_MACHINE)
 
 #define TYPE_RISCV_OT_EG_BOARD OT_EARLGREY "-board"
 OBJECT_DECLARE_SIMPLE_TYPE(OtEGBoardState, RISCV_OT_EG_BOARD)
