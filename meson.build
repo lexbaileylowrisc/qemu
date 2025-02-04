@@ -1,6 +1,7 @@
-project('qemu', ['c'], meson_version: '>=1.5.0',
+project('qemu', ['c', 'rust'], meson_version: '>=1.5.0',
         default_options: ['warning_level=1', 'c_std=gnu11', 'cpp_std=gnu++11', 'b_colorout=auto',
-                          'b_staticpic=false', 'stdsplit=false', 'optimization=2', 'b_pie=true'],
+                          'b_staticpic=false', 'stdsplit=false', 'optimization=2', 'b_pie=true',
+                          'b_lundef=false'],
         version: files('VERSION'))
 
 add_test_setup('quick', exclude_suites: ['slow', 'thorough'], is_default: true)
@@ -3515,7 +3516,7 @@ trace_events_subdirs = [
   'qom',
   'monitor',
   'util',
-  'gdbstub',
+  'gdbstub'
 ]
 if have_linux_user
   trace_events_subdirs += [ 'linux-user' ]
@@ -3552,6 +3553,7 @@ if have_system
     'hw/dma',
     'hw/fsi',
     'hw/hyperv',
+    'hw/ibexdemo',
     'hw/i2c',
     'hw/i386',
     'hw/i386/xen',
@@ -3560,6 +3562,7 @@ if have_system
     'hw/input',
     'hw/intc',
     'hw/isa',
+    'hw/jtag',
     'hw/mem',
     'hw/mips',
     'hw/misc',
@@ -3569,11 +3572,12 @@ if have_system
     'hw/nubus',
     'hw/nvme',
     'hw/nvram',
+    'hw/opentitan',
     'hw/pci',
     'hw/pci-host',
     'hw/ppc',
-    'hw/rtc',
     'hw/riscv',
+    'hw/rtc',
     'hw/s390x',
     'hw/scsi',
     'hw/sd',

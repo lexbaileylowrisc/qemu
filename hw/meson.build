@@ -64,3 +64,7 @@ subdir('sparc')
 subdir('sparc64')
 subdir('tricore')
 subdir('xtensa')
+
+subdir('ibexdemo')
+subdir('jtag')
+subdir('opentitan')

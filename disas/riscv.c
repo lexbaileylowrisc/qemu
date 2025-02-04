@@ -27,6 +27,9 @@
 #include "disas/riscv-xthead.h"
 #include "disas/riscv-xventana.h"
 
+/* Extensions that are not yet upstream */
+#include "disas/riscv-zbr.h"
+
 typedef enum {
     /* 0 is reserved for rv_op_illegal. */
     rv_op_lui = 1,
@@ -2438,9 +2441,11 @@ static const char *csr_name(int csrno)
     case 0x07a1: return "tdata1";
     case 0x07a2: return "tdata2";
     case 0x07a3: return "tdata3";
+    case 0x07a4: return "tinfo";
     case 0x07b0: return "dcsr";
     case 0x07b1: return "dpc";
-    case 0x07b2: return "dscratch";
+    case 0x07b2: return "dscratch0";
+    case 0x07b3: return "dscratch1";
     case 0x0b00: return "mcycle";
     case 0x0b01: return "mtime";
     case 0x0b02: return "minstret";
@@ -5432,6 +5437,9 @@ static GString *disasm_inst(rv_isa isa, uint64_t pc, rv_inst inst,
         { has_xtheadmempair_p, xthead_opcode_data, decode_xtheadmempair },
         { has_xtheadsync_p, xthead_opcode_data, decode_xtheadsync },
         { has_XVentanaCondOps_p, ventana_opcode_data, decode_xventanacondops },
+
+        /* Instructions that are not yet upstream */
+        { has_zbr_p, rv_zbr_opcode_data, decode_zbr },
     };
 
     for (size_t i = 0; i < ARRAY_SIZE(decoders); i++) {
@@ -5525,4 +5533,15 @@ int print_insn_riscv64(bfd_vma memaddr, struct disassemble_info *info)
 int print_insn_riscv128(bfd_vma memaddr, struct disassemble_info *info)
 {
     return print_insn_riscv(memaddr, info, rv128);
+}
+
+const char *get_riscv_debug_reg_name(int regno)
+{
+    switch (regno) {
+        case 0x0000 ... 0x0fff: return csr_name(regno);
+        case 0x1000 ... 0x101f: return rv_ireg_name_sym[regno-0x1000];
+        case 0x1020 ... 0x103f: return rv_freg_name_sym[regno-0x1020];
+        /* TODO: need to add vector regs (not part of 0.13.2 debug spec) */
+        default: return NULL;
+    }
 }

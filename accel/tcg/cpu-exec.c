@@ -677,6 +677,10 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 static inline bool cpu_handle_halt(CPUState *cpu)
 {
 #ifndef CONFIG_USER_ONLY
+    if (unlikely(cpu->held_in_reset)) {
+        return true;
+    }
+
     if (cpu->halted) {
         const TCGCPUOps *tcg_ops = cpu->cc->tcg_ops;
         bool leave_halt = tcg_ops->cpu_exec_halt(cpu);
@@ -727,6 +731,10 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         *ret = cpu->exception_index;
         if (*ret == EXCP_DEBUG) {
             cpu_handle_debug_exception(cpu);
+            if (cpu->exception_index < 0) {
+                /* the handler has cleared the exception */
+                return false;
+            }
         }
         cpu->exception_index = -1;
         return true;
@@ -1017,6 +1025,13 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
             /* See if we can patch the calling TB. */
             if (last_tb) {
                 tb_add_jump(last_tb, tb_exit, tb);
+            }
+
+            if (unlikely((cflags != -1) && (cflags & CF_SINGLE_STEP))) {
+                CPUClass *cc = cpu->cc;
+                if (cc->debug_enable_singlestep) {
+                    cc->debug_enable_singlestep(cpu, pc);
+                }
             }
 
             cpu_loop_exec_tb(cpu, tb, pc, &last_tb, &tb_exit);

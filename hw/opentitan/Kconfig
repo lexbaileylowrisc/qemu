@@ -1,0 +1,167 @@
+# OpenTitan devices
+
+config OT_ADDRESS_SPACE
+    bool
+
+config OT_AES
+    select OT_PRNG
+    bool
+
+config OT_ALERT
+    bool
+
+config OT_AON_TIMER
+    bool
+
+config OT_AST_DJ
+    select OT_RANDOM_SRC
+    bool
+
+config OT_AST_EG
+    bool
+
+config OT_CLKMGR
+    bool
+
+config OT_COMMON
+    bool
+
+config OT_CSRNG
+    bool
+
+config OT_DEV_PROXY
+    bool
+
+config OT_DM_TL
+    select RISCV_DEBUG
+    bool
+
+config OT_DMA
+    select OT_ADDRESS_SPACE
+    bool
+
+config OT_EDN
+    bool
+
+config OT_ENTROPY_SRC
+    select OT_RANDOM_SRC
+    bool
+
+config OT_FLASH
+    bool
+
+config OT_GPIO_DJ
+    bool
+
+config OT_GPIO_EG
+    bool
+
+config OT_HMAC
+    bool
+
+config OT_I2C_DJ
+    bool
+
+config OT_IBEX_WRAPPER
+    bool
+
+config OT_IBEX_WRAPPER_DJ
+    select OT_IBEX_WRAPPER
+    bool
+
+config OT_IBEX_WRAPPER_EG
+    select OT_IBEX_WRAPPER
+    bool
+
+config OT_KMAC
+    bool
+
+config OT_LC_CTRL
+    bool
+
+config OT_MBX
+    select OT_COMMON
+    bool
+
+config OT_OTBN
+    bool
+    select OT_BIGNUMBER
+
+config OT_OTP
+    select OT_OTP_BE_IF
+
+config OT_OTP_BE_IF
+    bool
+
+config OT_OTP_DJ
+    select OT_OTP
+    select OT_PRESENT
+    bool
+
+config OT_OTP_EG
+    select OT_OTP
+    bool
+
+config OT_OTP_OT_BE
+    select OT_OTP_BE_IF
+    bool
+
+config OT_PINMUX_DJ
+    bool
+
+config OT_PINMUX_EG
+    bool
+
+config OT_PLIC_EXT
+    bool
+
+config OT_PRESENT
+    bool
+
+config OT_PRINCE
+    bool
+
+config OT_PRNG
+    bool
+
+config OT_PWRMGR
+    bool
+
+config OT_RANDOM_SRC
+    bool
+
+config OT_ROM_CTRL
+    bool
+    select OT_COMMON
+    select OT_PRINCE
+
+config OT_RSTMGR
+    bool
+
+config OT_SENSOR
+    bool
+
+config OT_SOC_PROXY
+    bool
+
+config OT_SOCDBG_CTRL
+    bool
+
+config OT_SPI_DEVICE
+    bool
+
+config OT_SPI_HOST
+    bool
+    select SSI
+
+config OT_SRAM_CTRL
+    select OT_PRESENT
+    bool
+
+config OT_TIMER
+    bool
+
+config OT_UART
+    bool
+
+source otbn/Kconfig

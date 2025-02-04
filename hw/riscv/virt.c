@@ -1226,7 +1226,8 @@ static DeviceState *virt_create_plic(const MemMapEntry *memmap, int socket,
             VIRT_PLIC_ENABLE_STRIDE,
             VIRT_PLIC_CONTEXT_BASE,
             VIRT_PLIC_CONTEXT_STRIDE,
-            memmap[VIRT_PLIC].size);
+            memmap[VIRT_PLIC].size,
+            false);
 
     return ret;
 }

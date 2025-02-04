@@ -7,7 +7,111 @@ config RISCV_NUMA
 config IBEX
     bool
 
+config IBEX_COMMON
+    bool
+
+config IBEX_GPIO
+    bool
+
 # RISC-V machines in alphabetical order
+
+config OT_DARJEELING
+    bool
+    select IBEX
+    select IBEX_COMMON
+    select OT_ADDRESS_SPACE
+    select OT_AES
+    select OT_ALERT
+    select OT_AON_TIMER
+    select OT_AST_DJ
+    select OT_CLKMGR
+    select OT_CSRNG
+    select OT_DEV_PROXY
+    select OT_DM_TL
+    select OT_DMA
+    select OT_EDN
+    select OT_ENTROPY_SRC
+    select OT_GPIO_DJ
+    select OT_HMAC
+    select OT_I2C_DJ
+    select OT_IBEX_WRAPPER_DJ
+    select OT_KMAC
+    select OT_LC_CTRL
+    select OT_MBX
+    select OT_OTBN
+    select OT_OTP_DJ
+    select OT_OTP_OT_BE
+    select OT_PINMUX_DJ
+    select OT_PLIC_EXT
+    select OT_PWRMGR
+    select OT_RSTMGR
+    select OT_ROM_CTRL
+    select OT_SENSOR
+    select OT_SOC_PROXY
+    select OT_SPI_DEVICE
+    select OT_SPI_HOST
+    select OT_SRAM_CTRL
+    select OT_TIMER
+    select OT_UART
+    select PULP_RV_DM
+    select RISCV_DM
+    select RISCV_DTM
+    select SIFIVE_PLIC
+    select SPLIT_IRQ
+    select TAP_CTRL_RBB
+
+config OT_EARLGREY
+    bool
+    select IBEX
+    select IBEX_COMMON
+    select OT_AES
+    select OT_ALERT
+    select OT_AON_TIMER
+    select OT_AST_EG
+    select OT_CLKMGR
+    select OT_CSRNG
+    select OT_EDN
+    select OT_ENTROPY_SRC
+    select OT_FLASH
+    select OT_GPIO_EG
+    select OT_HMAC
+    select OT_IBEX_WRAPPER_EG
+    select OT_KMAC
+    select OT_LC_CTRL
+    select OT_OTBN
+    select OT_OTP_EG
+    select OT_OTP_OT_BE
+    select OT_PINMUX_EG
+    select OT_PLIC_EXT
+    select OT_PWRMGR
+    select OT_ROM_CTRL
+    select OT_RSTMGR
+    select OT_SENSOR
+    select OT_SPI_DEVICE
+    select OT_SPI_HOST
+    select OT_SRAM_CTRL
+    select OT_TIMER
+    select OT_UART
+    select PULP_RV_DM
+    select RISCV_DM
+    select RISCV_DTM
+    select SIFIVE_PLIC
+    select TAP_CTRL_RBB
+
+config IBEXDEMO
+    bool
+    select IBEX
+    select IBEX_COMMON
+    select IBEXDEMO_GPIO
+    select IBEXDEMO_SIMCTRL
+    select IBEXDEMO_SPI
+    select IBEXDEMO_TIMER
+    select IBEXDEMO_UART
+    select RISCV_DM
+    select RISCV_DTM
+    select ST7735
+    select TAP_CTRL_RBB
+    select UNIMP
 
 config MICROCHIP_PFSOC
     bool
@@ -30,6 +134,9 @@ config OPENTITAN
     default y
     depends on RISCV32
     select IBEX
+    select IBEX_SPI_HOST
+    select IBEX_TIMER
+    select IBEX_UART
     select SIFIVE_PLIC
     select UNIMP
 
@@ -60,6 +167,17 @@ config RISCV_VIRT
     select PLATFORM_BUS
     select ACPI
     select ACPI_PCI
+
+config RISCV_DEBUG
+    bool
+
+config RISCV_DM
+    select RISCV_DEBUG
+    bool
+
+config RISCV_DTM
+    select TAP_CTRL
+    bool
 
 config SHAKTI_C
     bool

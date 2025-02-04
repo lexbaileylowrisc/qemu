@@ -194,3 +194,11 @@ dm163_bits_ppi(unsigned dest_width) "dest_width : %u"
 dm163_leds(int led, uint32_t value) "led %d: 0x%x"
 dm163_channels(int channel, uint8_t value) "channel %d: 0x%x"
 dm163_refresh_rate(uint32_t rr) "refresh rate %d"
+
+# st7735
+st7735_reset(const char *msg) "%s"
+st7735_set(const char *msg, bool enable) "%s: %u"
+st7735_gpio(const char *line, bool enable) "%s: %u"
+st7735_cursor(const char *axis, uint16_t start, uint16_t end) "%s: %hu..%hu"
+
+

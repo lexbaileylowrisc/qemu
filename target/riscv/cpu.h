@@ -74,6 +74,7 @@ typedef struct CPUArchState CPURISCVState;
 #define RVJ RV('J')
 #define RVG RV('G')
 #define RVB RV('B')
+#define RVX RV('X')
 
 extern const uint32_t misa_bits[];
 const char *riscv_get_misa_ext_name(uint32_t bit);
@@ -428,6 +429,11 @@ struct CPUArchState {
     int64_t last_icount;
     bool itrigger_enabled;
 
+    /* debug module */
+    uint32_t dcsr;
+    target_ulong dpc;
+    target_ulong dscratch[RV_MAX_DSCRATCH];
+
     /* machine specific rdtime callback */
     uint64_t (*rdtime_fn)(void *);
     void *rdtime_fn_arg;
@@ -448,8 +454,15 @@ struct CPUArchState {
         target_ulong *val, target_ulong new_val, target_ulong write_mask);
     void *aia_ireg_rmw_fn_arg[4];
 
-    /* True if in debugger mode.  */
-    bool debugger;
+    /*
+     * Debug support
+     */
+    bool debugger; /* True if in debugger mode.  */
+    bool debug_cs; /* Debugger critical section w/o HW IRQ nor WFI */
+    bool debug_dm; /* Debug module is available */
+    unsigned debug_cause; /* Reason for entering debug */
+    uint64_t dmhaltvec; /* Address of halt handler */
+    uint64_t dmexcpvec; /* Address of exception handler */
 
     /*
      * CSRs for PointerMasking extension
@@ -466,6 +479,10 @@ struct CPUArchState {
     uint64_t hstateen[SMSTATEEN_MAX_COUNT];
     uint64_t sstateen[SMSTATEEN_MAX_COUNT];
     uint64_t henvcfg;
+
+    /* Ibex custom CSRs */
+    target_ulong cpuctrlsts;
+    target_ulong secureseed;
 #endif
     target_ulong cur_pmmask;
     target_ulong cur_pmbase;
@@ -485,7 +502,7 @@ struct CPUArchState {
     uint64_t kvm_timer_compare;
     uint64_t kvm_timer_state;
     uint64_t kvm_timer_frequency;
-#endif /* CONFIG_KVM */
+#endif
 };
 
 /*
@@ -578,6 +595,7 @@ void riscv_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
                                      MMUAccessType access_type,
                                      int mmu_idx, MemTxAttrs attrs,
                                      MemTxResult response, uintptr_t retaddr);
+void riscv_cpu_store_debug_cause(CPUState *cs, unsigned cause);
 hwaddr riscv_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 bool riscv_cpu_exec_interrupt(CPUState *cs, int interrupt_request);
 void riscv_cpu_swap_hypervisor_regs(CPURISCVState *env);
@@ -626,7 +644,6 @@ FIELD(TB_FLAGS, PM_MASK_ENABLED, 18, 1)
 FIELD(TB_FLAGS, PM_BASE_ENABLED, 19, 1)
 FIELD(TB_FLAGS, VTA, 20, 1)
 FIELD(TB_FLAGS, VMA, 21, 1)
-/* Native debug itrigger */
 FIELD(TB_FLAGS, ITRIGGER, 22, 1)
 /* Virtual mode enabled */
 FIELD(TB_FLAGS, VIRT_ENABLED, 23, 1)
@@ -887,6 +904,8 @@ extern const bool valid_vm_1_10_32[], valid_vm_1_10_64[];
 
 void riscv_get_csr_ops(int csrno, riscv_csr_operations *ops);
 void riscv_set_csr_ops(int csrno, riscv_csr_operations *ops);
+
+void riscv_add_ibex_csr_ops(RISCVCPU *cpu);
 
 void riscv_cpu_register_gdb_regs_for_features(CPUState *cs);
 

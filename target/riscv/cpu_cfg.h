@@ -43,6 +43,7 @@ struct RISCVCPUConfig {
     bool ext_zbkb;
     bool ext_zbkc;
     bool ext_zbkx;
+    bool ext_zbr;
     bool ext_zbs;
     bool ext_zca;
     bool ext_zcb;
@@ -135,6 +136,7 @@ struct RISCVCPUConfig {
     uint32_t mvendorid;
     uint64_t marchid;
     uint64_t mimpid;
+    uint64_t mtvec;
 
     /* Named features  */
     bool ext_svade;
@@ -178,6 +180,13 @@ struct RISCVCPUConfig {
 
 #ifndef CONFIG_USER_ONLY
     RISCVSATPMap satp_mode;
+
+    /* physical memory protection HW configuration */
+    uint8_t *pmp_cfg;
+    uint32_t pmp_cfg_count;
+    uint64_t *pmp_addr;
+    uint32_t pmp_addr_count;
+    uint64_t mseccfg;
 #endif
 };
 
@@ -218,5 +227,8 @@ MATERIALISE_EXT_PREDICATE(xtheadmemidx)
 MATERIALISE_EXT_PREDICATE(xtheadmempair)
 MATERIALISE_EXT_PREDICATE(xtheadsync)
 MATERIALISE_EXT_PREDICATE(XVentanaCondOps)
+
+/* Extensions that are not yet upstream */
+MATERIALISE_EXT_PREDICATE(zbr);
 
 #endif

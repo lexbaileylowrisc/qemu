@@ -42,7 +42,7 @@
 /* RISC-V CPU definitions */
 static const char riscv_single_letter_exts[] = "IEMAFDQCBPVH";
 const uint32_t misa_bits[] = {RVI, RVE, RVM, RVA, RVF, RVD, RVV,
-                              RVC, RVS, RVU, RVH, RVJ, RVG, RVB, 0};
+                              RVC, RVS, RVU, RVH, RVJ, RVG, RVB, RVX, 0};
 
 /*
  * From vector_helper.c
@@ -669,7 +669,7 @@ static void rv32_sifive_e_cpu_init(Object *obj)
     cpu->cfg.pmp = true;
 }
 
-static void rv32_ibex_cpu_init(Object *obj)
+static void rv32_lowrisc_ibexdemo_cpu_init(Object *obj)
 {
     CPURISCVState *env = &RISCV_CPU(obj)->env;
     RISCVCPU *cpu = RISCV_CPU(obj);
@@ -679,16 +679,45 @@ static void rv32_ibex_cpu_init(Object *obj)
 #ifndef CONFIG_USER_ONLY
     set_satp_mode_max_supported(cpu, VM_1_10_MBARE);
 #endif
-    /* inherited from parent obj via riscv_cpu_init() */
+
+    /* Enable ISA extensions */
     cpu->cfg.ext_zifencei = true;
     cpu->cfg.ext_zicsr = true;
-    cpu->cfg.pmp = true;
-    cpu->cfg.ext_smepmp = true;
 
+    cpu->cfg.marchid = 0x16u;
+    cpu->cfg.mtvec = 0x00000001u;
+    cpu->cfg.pmu_mask = MAKE_64BIT_MASK(3, 10);
+
+    riscv_add_ibex_csr_ops(cpu);
+}
+
+static void rv32_lowrisc_opentitan_cpu_init(Object *obj)
+{
+    CPURISCVState *env = &RISCV_CPU(obj)->env;
+    RISCVCPU *cpu = RISCV_CPU(obj);
+
+    riscv_cpu_set_misa_ext(env, RVI | RVM | RVC | RVU | RVX);
+    env->priv_ver = PRIV_VERSION_1_12_0;
+#ifndef CONFIG_USER_ONLY
+    set_satp_mode_max_supported(cpu, VM_1_10_MBARE);
+#endif
+
+    /* Enable ISA extensions */
+    cpu->cfg.ext_zifencei = true;
+    cpu->cfg.ext_zicsr = true;
     cpu->cfg.ext_zba = true;
     cpu->cfg.ext_zbb = true;
     cpu->cfg.ext_zbc = true;
+    cpu->cfg.ext_zbr = true;
     cpu->cfg.ext_zbs = true;
+    cpu->cfg.pmp = true;
+    cpu->cfg.ext_smepmp = true;
+
+    cpu->cfg.marchid = 0x16u;
+    cpu->cfg.mtvec = 0x00000001u;
+    cpu->cfg.pmu_mask = MAKE_64BIT_MASK(3, 10);
+
+    riscv_add_ibex_csr_ops(cpu);
 }
 
 static void rv32_imafcu_nommu_cpu_init(Object *obj)
@@ -913,7 +942,8 @@ bool riscv_cpu_has_work(CPUState *cs)
      */
     return riscv_cpu_all_pending(env) != 0 ||
         riscv_cpu_sirq_pending(env) != RISCV_EXCP_NONE ||
-        riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE;
+        riscv_cpu_vsirq_pending(env) != RISCV_EXCP_NONE ||
+        env->debug_cs;
 #else
     return true;
 #endif
@@ -962,7 +992,6 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     }
     env->mcause = 0;
     env->miclaim = MIP_SGEIP;
-    env->pc = env->resetvec;
     env->bins = 0;
     env->two_stage_lookup = false;
 
@@ -1032,7 +1061,45 @@ static void riscv_cpu_reset_hold(Object *obj, ResetType type)
     if (kvm_enabled()) {
         kvm_riscv_reset_vcpu(cpu);
     }
+
+    /* default physical memory protection configuration */
+    const RISCVCPUConfig *cfg = &cpu->cfg;
+    g_assert(cfg->pmp_cfg_count <= MAX_RISCV_PMPS);
+    g_assert(cfg->pmp_addr_count <= MAX_RISCV_PMPS);
+    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+        env->pmp_state.pmp[i].cfg_reg =
+            i < cfg->pmp_cfg_count ? cfg->pmp_cfg[i] : 0;
+    }
+    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+        env->pmp_state.pmp[i].addr_reg =
+            i < cfg->pmp_addr_count ? (target_ulong)cfg->pmp_addr[i] : 0;
+    }
+    for (i = 0; i < MAX_RISCV_PMPS; i++) {
+        pmp_update_rule_addr(env, i);
+    }
+    pmp_update_rule_nums(env);
+
+    env->mseccfg = (target_ulong)cfg->mseccfg;
 #endif
+}
+
+static void riscv_cpu_reset_exit(Object *obj, ResetType type)
+{
+    CPUState *cs = CPU(obj);
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    RISCVCPUClass *mcc = RISCV_CPU_GET_CLASS(cpu);
+
+#ifndef CONFIG_USER_ONLY
+    CPURISCVState *env = &cpu->env;
+
+    /* reset vector and mtvec may be updated while hart is in reset */
+    env->pc = env->resetvec;
+    env->mtvec = cpu->cfg.mtvec;
+#endif
+
+    if (mcc->parent_phases.exit) {
+        mcc->parent_phases.exit(obj, type);
+    }
 }
 
 static void riscv_cpu_disas_set_info(CPUState *s, disassemble_info *info)
@@ -1159,6 +1226,56 @@ void riscv_cpu_finalize_features(RISCVCPU *cpu, Error **errp)
     }
 }
 
+static bool riscv_cpu_debug_request(CPUState *cs)
+{
+#ifndef CONFIG_USER_ONLY
+    RISCVCPU *cpu = RISCV_CPU(cs);
+    CPURISCVState *env = &cpu->env;
+
+    if (!env->debug_dm) {
+        return false;
+    }
+
+    if (!get_field(env->dcsr, DCSR_STEP)) {
+        return false;
+    }
+
+    if (!env->debugger) {
+        env->dcsr = set_field(env->dcsr, DCSR_CAUSE, DCSR_CAUSE_STEP);
+        env->dcsr = set_field(env->dcsr, DCSR_PRV, env->priv);
+        env->dpc = env->pc;
+        env->debugger = true;
+        env->priv = PRV_M;
+        env->pc = env->dmhaltvec;
+        cs->singlestep_enabled = 0;
+        cs->exception_index = -1;
+    }
+
+    return true;
+#else
+    return false;
+#endif
+}
+
+static void riscv_cpu_debug_enable_singlestep(CPUState *s, vaddr pc)
+{
+    (void)pc;
+
+#ifndef CONFIG_USER_ONLY
+    RISCVCPU *cpu = RISCV_CPU(s);
+    CPURISCVState *env = &cpu->env;
+    if (!env->debug_dm) {
+        return;
+    }
+    s->singlestep_enabled = SSTEP_ENABLE | SSTEP_NOIRQ;
+    if (get_field(env->dcsr, DCSR_STOPTIME)) {
+        s->singlestep_enabled |= SSTEP_NOTIMER;
+    }
+#else
+    s->singlestep_enabled = SSTEP_ENABLE;
+#endif
+}
+
 static void riscv_cpu_realize(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
@@ -1282,7 +1399,8 @@ static void riscv_cpu_set_irq(void *opaque, int irq, int level)
             }
             break;
         default:
-            g_assert_not_reached();
+            /* Handle platform / custom local interrupts */
+            riscv_cpu_update_mip(env, 1ULL << irq, BOOL_TO_MASK(level));
         }
     } else if (irq < (IRQ_LOCAL_MAX + IRQ_LOCAL_GUEST_MAX)) {
         /* Require H-extension for handling guest local interrupts */
@@ -1409,7 +1527,8 @@ static const MISAExtInfo misa_ext_info_arr[] = {
     MISA_EXT_INFO(RVJ, "x-j", "Dynamic translated languages"),
     MISA_EXT_INFO(RVV, "v", "Vector operations"),
     MISA_EXT_INFO(RVG, "g", "General purpose (IMAFD_Zicsr_Zifencei)"),
-    MISA_EXT_INFO(RVB, "b", "Bit manipulation (Zba_Zbb_Zbs)")
+    MISA_EXT_INFO(RVB, "b", "Bit manipulation (Zba_Zbb_Zbs)"),
+    MISA_EXT_INFO(RVX, "x", "Non-standard extensions")
 };
 
 static void riscv_cpu_validate_misa_mxl(RISCVCPUClass *mcc)
@@ -1595,6 +1714,7 @@ const RISCVCPUMultiExtConfig riscv_cpu_vendor_exts[] = {
 
 /* These are experimental so mark with 'x-' */
 const RISCVCPUMultiExtConfig riscv_cpu_experimental_exts[] = {
+    MULTI_EXT_CFG_BOOL("x-zbr", ext_zbr, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1607,7 +1727,6 @@ const RISCVCPUMultiExtConfig riscv_cpu_experimental_exts[] = {
  */
 const RISCVCPUMultiExtConfig riscv_cpu_named_features[] = {
     MULTI_EXT_CFG_BOOL("zic64b", ext_zic64b, true),
-
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2678,12 +2797,20 @@ static Property riscv_cpu_properties[] = {
     {.name = "cbop_blocksize", .info = &prop_cbop_blksize},
     {.name = "cboz_blocksize", .info = &prop_cboz_blksize},
 
-     {.name = "mvendorid", .info = &prop_mvendorid},
-     {.name = "mimpid", .info = &prop_mimpid},
-     {.name = "marchid", .info = &prop_marchid},
+    {.name = "mvendorid", .info = &prop_mvendorid},
+    {.name = "mimpid", .info = &prop_mimpid},
+    {.name = "marchid", .info = &prop_marchid},
 
 #ifndef CONFIG_USER_ONLY
     DEFINE_PROP_UINT64("resetvec", RISCVCPU, env.resetvec, DEFAULT_RSTVEC),
+    DEFINE_PROP_UINT64("mtvec", RISCVCPU, cfg.mtvec, 0u),
+    DEFINE_PROP_UINT64("mseccfg", RISCVCPU, cfg.mseccfg, 0u),
+    DEFINE_PROP_ARRAY("pmp_cfg", RISCVCPU, cfg.pmp_cfg_count, cfg.pmp_cfg,
+                      qdev_prop_uint8, uint8_t),
+    DEFINE_PROP_ARRAY("pmp_addr", RISCVCPU, cfg.pmp_addr_count, cfg.pmp_addr,
+                      qdev_prop_uint64, uint64_t),
+    DEFINE_PROP_UINT64("dmhaltvec", RISCVCPU, env.dmhaltvec, 0),
+    DEFINE_PROP_UINT64("dmexcpvec", RISCVCPU, env.dmexcpvec, 0),
 #endif
 
     DEFINE_PROP_BOOL("short-isa-string", RISCVCPU, cfg.short_isa_string, false),
@@ -2760,7 +2887,8 @@ static void riscv_cpu_common_class_init(ObjectClass *c, void *data)
     device_class_set_parent_realize(dc, riscv_cpu_realize,
                                     &mcc->parent_realize);
 
-    resettable_class_set_parent_phases(rc, NULL, riscv_cpu_reset_hold, NULL,
+    resettable_class_set_parent_phases(rc, NULL, riscv_cpu_reset_hold,
+                                       riscv_cpu_reset_exit,
                                        &mcc->parent_phases);
 
     cc->class_by_name = riscv_cpu_class_by_name;
@@ -2772,6 +2900,8 @@ static void riscv_cpu_common_class_init(ObjectClass *c, void *data)
     cc->gdb_read_register = riscv_cpu_gdb_read_register;
     cc->gdb_write_register = riscv_cpu_gdb_write_register;
     cc->gdb_stop_before_watchpoint = true;
+    cc->debug_request = riscv_cpu_debug_request;
+    cc->debug_enable_singlestep = riscv_cpu_debug_enable_singlestep;
     cc->disas_set_info = riscv_cpu_disas_set_info;
 #ifndef CONFIG_USER_ONLY
     cc->sysemu_ops = &riscv_sysemu_ops;
@@ -2964,7 +3094,8 @@ static const TypeInfo riscv_cpu_type_infos[] = {
 #if defined(TARGET_RISCV32) || \
     (defined(TARGET_RISCV64) && !defined(CONFIG_USER_ONLY))
     DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_BASE32,    MXL_RV32,  rv32_base_cpu_init),
-    DEFINE_VENDOR_CPU(TYPE_RISCV_CPU_IBEX,       MXL_RV32,  rv32_ibex_cpu_init),
+    DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_IBEXDEMO,  MXL_RV32,  rv32_lowrisc_ibexdemo_cpu_init),
+    DEFINE_CPU(TYPE_RISCV_CPU_LOWRISC_OPENTITAN, MXL_RV32,  rv32_lowrisc_opentitan_cpu_init),
     DEFINE_VENDOR_CPU(TYPE_RISCV_CPU_SIFIVE_E31, MXL_RV32,  rv32_sifive_e_cpu_init),
     DEFINE_VENDOR_CPU(TYPE_RISCV_CPU_SIFIVE_E34, MXL_RV32,  rv32_imafcu_nommu_cpu_init),
     DEFINE_VENDOR_CPU(TYPE_RISCV_CPU_SIFIVE_U34, MXL_RV32,  rv32_sifive_u_cpu_init),

@@ -123,6 +123,8 @@ typedef struct DisasContext {
     bool bcfi_enabled;
 } DisasContext;
 
+#define DISAS_SSTEP       DISAS_TARGET_0
+
 static inline bool has_ext(DisasContext *ctx, uint32_t ext)
 {
     return ctx->misa_ext & ext;
@@ -1284,6 +1286,9 @@ static void riscv_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     decode_opc(env, ctx, opcode16);
     ctx->base.pc_next += ctx->cur_insn_len;
 
+    if (unlikely(ctx->cs->singlestep_enabled)) {
+        ctx->base.is_jmp = DISAS_SSTEP;
+    }
     /*
      * If 'fcfi_lp_expected' is still true after processing the instruction,
      * then we did not see an 'lpad' instruction, and must raise an exception.
@@ -1291,7 +1296,7 @@ static void riscv_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
      * code the insn may have emitted will be deleted as dead code following
      * the noreturn exception
      */
-    if (ctx->fcfi_lp_expected) {
+    else if (ctx->fcfi_lp_expected) {
         /* Emit after insn_start, i.e. before the op following insn_start. */
         tcg_ctx->emit_before_op = QTAILQ_NEXT(ctx->base.insn_start, link);
         tcg_gen_st_tl(tcg_constant_tl(RISCV_EXCP_SW_CHECK_FCFI_TVAL),
@@ -1327,6 +1332,10 @@ static void riscv_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
 
     switch (ctx->base.is_jmp) {
+    case DISAS_SSTEP:
+        ctx->pc_save = ctx->base.pc_first;
+        gen_goto_tb(ctx, 0, 0);
+        break;
     case DISAS_TOO_MANY:
         gen_goto_tb(ctx, 0, 0);
         break;

@@ -589,6 +589,15 @@ static RISCVException have_mseccfg(CPURISCVState *env, int csrno)
     return RISCV_EXCP_ILLEGAL_INST;
 }
 
+static RISCVException have_mseccfg32(CPURISCVState *env, int csrno)
+{
+    if (riscv_cpu_mxl(env) != MXL_RV32) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    return have_mseccfg(env, csrno);
+}
+
 static RISCVException debug(CPURISCVState *env, int csrno)
 {
     if (riscv_cpu_cfg(env)->debug) {
@@ -823,7 +832,18 @@ static RISCVException write_vcsr(CPURISCVState *env, int csrno,
 /* User Timers and Counters */
 static target_ulong get_ticks(bool shift)
 {
-    int64_t val = cpu_get_host_ticks();
+    int64_t val;
+
+#if !defined(CONFIG_USER_ONLY)
+    if (icount_enabled()) {
+        val = icount_get_raw();
+    } else {
+        val = cpu_get_host_ticks();
+    }
+#else
+    val = cpu_get_host_ticks();
+#endif
+
     target_ulong result = shift ? val >> 32 : val;
 
     return result;
@@ -4245,6 +4265,20 @@ static RISCVException write_mseccfg(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException read_mseccfgh(CPURISCVState *env, int csrno,
+                                   target_ulong *val)
+{
+    *val = 0u;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_mseccfgh(CPURISCVState *env, int csrno,
+                                    target_ulong val)
+{
+    /* WARL: ignore all bits */
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException read_pmpcfg(CPURISCVState *env, int csrno,
                                   target_ulong *val)
 {
@@ -4348,6 +4382,58 @@ static RISCVException write_mcontext(CPURISCVState *env, int csrno,
     }
 
     env->mcontext = val & mask;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dcsr(CPURISCVState *env, int csrno,
+                                target_ulong *val)
+{
+    *val = env->dcsr;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dcsr(CPURISCVState *env, int csrno,
+                                 target_ulong val)
+{
+    /* STEPIE feature is not supported */
+    target_ulong wmask = DCSR_PRV | DCSR_STEP | DCSR_STOPCOUNT | DCSR_STOPTIME |
+                         DCSR_EBREAKM;
+    if (riscv_has_ext(env, RVS)) {
+        wmask |= DCSR_EBREAKS;
+    }
+    if (riscv_has_ext(env, RVU)) {
+        wmask |= DCSR_EBREAKU;
+    }
+    env->dcsr &= ~wmask;
+    env->dcsr |= val & wmask;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dpc(CPURISCVState *env, int csrno,
+                               target_ulong *val)
+{
+    *val = env->dpc;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dpc(CPURISCVState *env, int csrno,
+                                target_ulong val)
+{
+    env->dpc = val;
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_dscratch(CPURISCVState *env, int csrno,
+                                    target_ulong *val)
+{
+    *val = env->dscratch[csrno - CSR_DSCRATCH0];
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_dscratch(CPURISCVState *env, int csrno,
+                                    target_ulong val)
+{
+    env->dscratch[csrno - CSR_DSCRATCH0] = val;
     return RISCV_EXCP_NONE;
 }
 
@@ -4721,6 +4807,11 @@ static inline RISCVException riscv_csrrw_check(CPURISCVState *env,
         return RISCV_EXCP_ILLEGAL_INST;
     }
 
+    /* ensure CSR is implemented by checking predicate */
+    if (!csr_ops[csrno].predicate) {
+        return RISCV_EXCP_ILLEGAL_INST;
+    }
+
     /* privileged spec version check */
     if (env->priv_ver < csr_min_priv) {
         return RISCV_EXCP_ILLEGAL_INST;
@@ -4943,7 +5034,7 @@ RISCVException riscv_csrrw_i128(CPURISCVState *env, int csrno,
 
 /*
  * Debugger support.  If not in user mode, set env->debugger before the
- * riscv_csrrw call and clear it after the call.
+ * riscv_csrrw call and restore it after the call.
  */
 RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
                                  target_ulong *ret_value,
@@ -4952,6 +5043,7 @@ RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
 {
     RISCVException ret;
 #if !defined(CONFIG_USER_ONLY)
+    bool debugger = env->debugger;
     env->debugger = true;
 #endif
     if (!write_mask) {
@@ -4960,7 +5052,7 @@ RISCVException riscv_csrrw_debug(CPURISCVState *env, int csrno,
         ret = riscv_csrrw(env, csrno, ret_value, new_value, write_mask);
     }
 #if !defined(CONFIG_USER_ONLY)
-    env->debugger = false;
+    env->debugger = debugger;
 #endif
     return ret;
 }
@@ -5285,7 +5377,9 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_VSIPH]       = { "vsiph",       aia_hmode32, NULL, NULL, rmw_vsiph },
 
     /* Physical Memory Protection */
-    [CSR_MSECCFG]    = { "mseccfg",   have_mseccfg, read_mseccfg, write_mseccfg,
+    [CSR_MSECCFG]    = { "mseccfg", have_mseccfg, read_mseccfg, write_mseccfg,
+                         .min_priv_ver = PRIV_VERSION_1_11_0           },
+    [CSR_MSECCFGH]   = { "mseccfgh", have_mseccfg32, read_mseccfgh, write_mseccfgh,
                          .min_priv_ver = PRIV_VERSION_1_11_0           },
     [CSR_PMPCFG0]    = { "pmpcfg0",   pmp, read_pmpcfg,  write_pmpcfg  },
     [CSR_PMPCFG1]    = { "pmpcfg1",   pmp, read_pmpcfg,  write_pmpcfg  },
@@ -5308,13 +5402,19 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_PMPADDR14] =  { "pmpaddr14", pmp, read_pmpaddr, write_pmpaddr },
     [CSR_PMPADDR15] =  { "pmpaddr15", pmp, read_pmpaddr, write_pmpaddr },
 
-    /* Debug CSRs */
+    /* Trigger CSRs */
     [CSR_TSELECT]   =  { "tselect",  debug, read_tselect,  write_tselect  },
     [CSR_TDATA1]    =  { "tdata1",   debug, read_tdata,    write_tdata    },
     [CSR_TDATA2]    =  { "tdata2",   debug, read_tdata,    write_tdata    },
     [CSR_TDATA3]    =  { "tdata3",   debug, read_tdata,    write_tdata    },
     [CSR_TINFO]     =  { "tinfo",    debug, read_tinfo,    write_ignore   },
     [CSR_MCONTEXT]  =  { "mcontext", debug, read_mcontext, write_mcontext },
+
+    /* Debug CSRs */
+    [CSR_DCSR]      =  { "dcsr",      debug, read_dcsr,     write_dcsr     },
+    [CSR_DPC]       =  { "dpc",       debug, read_dpc,      write_dpc      },
+    [CSR_DSCRATCH0] =  { "dscratch0", debug, read_dscratch, write_dscratch },
+    [CSR_DSCRATCH1] =  { "dscratch1", debug, read_dscratch, write_dscratch },
 
     /* User Pointer Masking */
     [CSR_UMTE]    =    { "umte",    pointer_masking, read_umte,  write_umte },
