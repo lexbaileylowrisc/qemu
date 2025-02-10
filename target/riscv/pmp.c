@@ -32,16 +32,6 @@ static bool pmp_write_cfg(CPURISCVState *env, uint32_t addr_index,
 static uint8_t pmp_read_cfg(CPURISCVState *env, uint32_t addr_index);
 
 /*
- * Convert the PMP permissions to match the truth table in the
- * ePMP spec.
- */
-static inline uint8_t pmp_get_epmp_operation(uint8_t cfg)
-{
-    return ((cfg & PMP_LOCK) >> 4) | ((cfg & PMP_READ) << 2) |
-           (cfg & PMP_WRITE) | ((cfg & PMP_EXEC) >> 2);
-}
-
-/*
  * Accessor method to extract address matching type 'a field' from cfg reg
  */
 static inline uint8_t pmp_get_a_field(uint8_t cfg)
@@ -64,62 +54,12 @@ static inline int pmp_is_locked(CPURISCVState *env, uint32_t pmp_index)
         return 1;
     }
 
+    /* Top PMP has no 'next' to check */
+    if ((pmp_index + 1u) >= MAX_RISCV_PMPS) {
+        return 0;
+    }
+
     return 0;
-}
-
-/*
- * Check whether a PMP is writable or not.
- */
-static bool pmp_is_writable(CPURISCVState *env, uint32_t pmp_index)
-{
-    /*
-     * If the ePMP feature is enabled, the RLB bit allows writing to any PMP,
-     * regardless of PMP_LOCK bit
-     */
-    if (riscv_cpu_cfg(env)->ext_smepmp && MSECCFG_RLB_ISSET(env)) {
-        return true;
-    }
-
-    /* Standard PMP, just check if it is locked */
-    return !pmp_is_locked(env, pmp_index);
-}
-
-/*
- * Check whether `val` is a valid ePMP config value
- */
-static bool pmp_is_valid_epmp_cfg(CPURISCVState *env, uint8_t val)
-{
-    /* No check if MML is not set or if RLB is set */
-    if (!MSECCFG_MML_ISSET(env) || MSECCFG_RLB_ISSET(env)) {
-        return true;
-    }
-
-    /*
-     * Adding a rule with executable privileges that either is M-mode-only
-     * or a locked Shared-Region is not possible
-     */
-    switch (pmp_get_epmp_operation(val)) {
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-    case 7:
-    case 8:
-    case 12:
-    case 14:
-    case 15:
-        return true;
-    case 9:
-    case 10:
-    case 11:
-    case 13:
-        return false;
-    default:
-        g_assert_not_reached();
-    }
 }
 
 /*
@@ -142,6 +82,7 @@ static inline uint8_t pmp_read_cfg(CPURISCVState *env, uint32_t pmp_index)
     return 0;
 }
 
+
 /*
  * Accessor to set the cfg reg for a specific PMP/HART
  * Bounds checks and relevant lock bit.
@@ -149,32 +90,52 @@ static inline uint8_t pmp_read_cfg(CPURISCVState *env, uint32_t pmp_index)
 static bool pmp_write_cfg(CPURISCVState *env, uint32_t pmp_index, uint8_t val)
 {
     if (pmp_index < MAX_RISCV_PMPS) {
-        if (env->pmp_state.pmp[pmp_index].cfg_reg == val) {
-            /* no change */
-            return false;
+        bool locked = true;
+
+        if (riscv_cpu_cfg(env)->ext_smepmp) {
+            /* mseccfg.RLB is set */
+            if (MSECCFG_RLB_ISSET(env)) {
+                locked = false;
+            }
+
+            /* mseccfg.MML is not set */
+            if (!MSECCFG_MML_ISSET(env) && !pmp_is_locked(env, pmp_index)) {
+                locked = false;
+            }
+
+            /* mseccfg.MML is set */
+            if (MSECCFG_MML_ISSET(env)) {
+                /* not adding execute bit */
+                if ((val & PMP_LOCK) != 0 && (val & PMP_EXEC) != PMP_EXEC) {
+                    locked = false;
+                }
+                /* shared region and not adding X bit */
+                if ((val & PMP_LOCK) != PMP_LOCK &&
+                    (val & 0x7) != (PMP_WRITE | PMP_EXEC)) {
+                    locked = false;
+                }
+            }
+        } else {
+            if (!pmp_is_locked(env, pmp_index)) {
+                locked = false;
+            }
         }
 
-        if (!pmp_is_writable(env, pmp_index)) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "ignoring pmpcfg[%u] write - locked"
-                          " - current:0x%02x new:0x%02x\n",
-                          pmp_index, env->pmp_state.pmp[pmp_index].cfg_reg,
-                          val);
-        } else if (riscv_cpu_cfg(env)->ext_smepmp &&
-                   !pmp_is_valid_epmp_cfg(env, val)) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "ignoring pmpcfg[%u] write - invalid"
-                          " - current:0x%02x new:0x%02x\n",
-                          pmp_index, env->pmp_state.pmp[pmp_index].cfg_reg,
-                          val);
-        } else {
+        if (locked) {
+            qemu_log_mask(LOG_GUEST_ERROR, "ignoring pmpcfg write - locked\n");
+        } else if (env->pmp_state.pmp[pmp_index].cfg_reg != val) {
+            /* If !mseccfg.MML then ignore writes with encoding RW=01 */
+            if ((val & PMP_WRITE) && !(val & PMP_READ) &&
+                !MSECCFG_MML_ISSET(env)) {
+                return false;
+            }
             env->pmp_state.pmp[pmp_index].cfg_reg = val;
             pmp_update_rule_addr(env, pmp_index);
             return true;
         }
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring pmpcfg[%u] write - out of bounds\n", pmp_index);
+                      "ignoring pmpcfg write - out of bounds\n");
     }
 
     return false;
@@ -184,6 +145,7 @@ void pmp_unlock_entries(CPURISCVState *env)
 {
     uint32_t pmp_num = pmp_get_num_rules(env);
     int i;
+
     for (i = 0; i < pmp_num; i++) {
         env->pmp_state.pmp[i].cfg_reg &= ~(PMP_LOCK | PMP_AMATCH);
     }
@@ -381,9 +343,7 @@ bool pmp_hart_has_privs(CPURISCVState *env, hwaddr addr,
         /* partially inside */
         if ((s + e) == 1) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "pmp violation at 0x" HWADDR_FMT_plx "+" TARGET_FMT_lu
-                          " - access is partially inside pmp[%u]\n",
-                          addr, size, i);
+                          "pmp violation - access is partially inside\n");
             *allowed_privs = 0;
             return false;
         }
@@ -391,6 +351,16 @@ bool pmp_hart_has_privs(CPURISCVState *env, hwaddr addr,
         /* fully inside */
         const uint8_t a_field =
             pmp_get_a_field(env->pmp_state.pmp[i].cfg_reg);
+
+        /*
+         * Convert the PMP permissions to match the truth table in the
+         * Smepmp spec.
+         */
+        const uint8_t smepmp_operation =
+            ((env->pmp_state.pmp[i].cfg_reg & PMP_LOCK) >> 4) |
+            ((env->pmp_state.pmp[i].cfg_reg & PMP_READ) << 2) |
+            (env->pmp_state.pmp[i].cfg_reg & PMP_WRITE) |
+            ((env->pmp_state.pmp[i].cfg_reg & PMP_EXEC) >> 2);
 
         if (((s + e) == 2) && (PMP_AMATCH_OFF != a_field)) {
             /*
@@ -410,11 +380,8 @@ bool pmp_hart_has_privs(CPURISCVState *env, hwaddr addr,
                 /*
                  * If mseccfg.MML Bit set, do the enhanced pmp priv check
                  */
-                const uint8_t epmp_operation =
-                    pmp_get_epmp_operation(env->pmp_state.pmp[i].cfg_reg);
-
                 if (mode == PRV_M) {
-                    switch (epmp_operation) {
+                    switch (smepmp_operation) {
                     case 0:
                     case 1:
                     case 4:
@@ -445,7 +412,7 @@ bool pmp_hart_has_privs(CPURISCVState *env, hwaddr addr,
                         g_assert_not_reached();
                     }
                 } else {
-                    switch (epmp_operation) {
+                    switch (smepmp_operation) {
                     case 0:
                     case 8:
                     case 9:
@@ -549,11 +516,6 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
     bool is_next_cfg_tor = false;
 
     if (addr_index < MAX_RISCV_PMPS) {
-        if (env->pmp_state.pmp[addr_index].addr_reg == val) {
-            /* no change */
-            return;
-        }
-
         /*
          * In TOR mode, need to check the lock bit of the next pmp
          * (if there is a next).
@@ -562,36 +524,29 @@ void pmpaddr_csr_write(CPURISCVState *env, uint32_t addr_index,
             uint8_t pmp_cfg = env->pmp_state.pmp[addr_index + 1].cfg_reg;
             is_next_cfg_tor = PMP_AMATCH_TOR == pmp_get_a_field(pmp_cfg);
 
-            if (!pmp_is_writable(env, addr_index + 1) && is_next_cfg_tor) {
+            if (pmp_cfg & PMP_LOCK && is_next_cfg_tor) {
                 qemu_log_mask(LOG_GUEST_ERROR,
-                              "ignoring pmpaddr[%u] write - pmpcfg+1 locked"
-                              " - prev:0x" TARGET_FMT_lx " new:0x" TARGET_FMT_lx
-                              "\n",
-                              addr_index,
-                              env->pmp_state.pmp[addr_index].addr_reg, val);
+                              "ignoring pmpaddr write - pmpcfg + 1 locked\n");
                 return;
             }
         }
 
-        if (pmp_is_writable(env, addr_index)) {
-            env->pmp_state.pmp[addr_index].addr_reg = val;
-            pmp_update_rule_addr(env, addr_index);
-            if (is_next_cfg_tor) {
-                pmp_update_rule_addr(env, addr_index + 1);
+        if (!pmp_is_locked(env, addr_index)) {
+            if (env->pmp_state.pmp[addr_index].addr_reg != val) {
+                env->pmp_state.pmp[addr_index].addr_reg = val;
+                pmp_update_rule_addr(env, addr_index);
+                if (is_next_cfg_tor) {
+                    pmp_update_rule_addr(env, addr_index + 1);
+                }
+                tlb_flush(env_cpu(env));
             }
-            tlb_flush(env_cpu(env));
         } else {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "ignoring pmpaddr[%u] write - locked"
-                          " - prev:0x" TARGET_FMT_lx " new:0x" TARGET_FMT_lx
-                          "\n",
-                          addr_index, env->pmp_state.pmp[addr_index].addr_reg,
-                          val);
+                          "ignoring pmpaddr write - locked\n");
         }
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring pmpaddr[%u] write - out of bounds\n",
-                      addr_index);
+                      "ignoring pmpaddr write - out of bounds\n");
     }
 }
 
@@ -608,8 +563,7 @@ target_ulong pmpaddr_csr_read(CPURISCVState *env, uint32_t addr_index)
         trace_pmpaddr_csr_read(env->mhartid, addr_index, val);
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "ignoring pmpaddr[%u] read - out of bounds\n",
-                      addr_index);
+                      "ignoring pmpaddr read - out of bounds\n");
     }
 
     return val;
