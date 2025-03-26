@@ -652,11 +652,11 @@ static void ot_kmac_process(void *opaque)
         case OT_KMAC_MODE_SHA3:
             sha3_done(&s->ltc_state, &s->keccak_state[0]);
             break;
-        /* NOLINTNEXTLINE */
         case OT_KMAC_MODE_SHAKE:
             sha3_shake_done(&s->ltc_state, &s->keccak_state[0],
                             ot_kmac_get_keccak_rate_bytes(cfg->strength));
             break;
+        /* NOLINTNEXTLINE(bugprone-branch-clone) */
         case OT_KMAC_MODE_CSHAKE:
         case OT_KMAC_MODE_KMAC:
             sha3_cshake_done(&s->ltc_state, &s->keccak_state[0],
@@ -1450,7 +1450,7 @@ static void ot_kmac_msgfifo_write(void *opaque, hwaddr addr, uint64_t value,
     trace_ot_kmac_msgfifo_write(s->ot_id, (uint32_t)addr, (uint32_t)value, size,
                                 pc);
 
-    /* trigger error if an app is running of not in MSG_FEED state */
+    /* trigger error if an app is running or not in MSG_FEED state */
     if (s->current_app || s->state != KMAC_ST_MSG_FEED) {
         /* info field mux_sel=1 (SW) or 2 (App) */
         ot_kmac_report_error(s, OT_KMAC_ERR_SW_PUSHED_MSG_FIFO,
@@ -1480,6 +1480,18 @@ static void ot_kmac_msgfifo_write(void *opaque, hwaddr addr, uint64_t value,
     ot_kmac_trigger_deferred_bh(s);
 }
 
+static bool ot_kmac_compare_app_cfg(const OtKMACAppCfg *cfg1,
+                                    const OtKMACAppCfg *cfg2)
+{
+    return cfg1->mode == cfg2->mode && cfg1->strength == cfg2->strength &&
+           cfg1->prefix.funcname_len == cfg2->prefix.funcname_len &&
+           cfg1->prefix.customstr_len == cfg2->prefix.customstr_len &&
+           memcmp(cfg1->prefix.funcname, cfg2->prefix.funcname,
+                  cfg1->prefix.funcname_len) == 0 &&
+           memcmp(cfg1->prefix.customstr, cfg2->prefix.customstr,
+                  cfg1->prefix.customstr_len) == 0;
+}
+
 static void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
                                 const OtKMACAppCfg *cfg, OtKmacResponse fn,
                                 void *opaque)
@@ -1489,9 +1501,8 @@ static void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
     OtKMACApp *app = &s->apps[app_idx];
 
     if (app->connected) {
-        /* NOLINTNEXTLINE */
-        if (memcmp(&app->cfg, cfg, sizeof(OtKMACAppCfg)) == 0 &&
-            fn == app->fn && opaque == app->opaque) {
+        if (ot_kmac_compare_app_cfg(&app->cfg, cfg) && fn == app->fn &&
+            opaque == app->opaque) {
             /*
              * silently ignore duplicate connection from the same component with
              * the same parameters.
