@@ -3359,6 +3359,54 @@ static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
     }
 }
 
+static void ot_otp_dj_get_keymgr_secret(
+    OtOTPState *s, OtOTPKeyMgrSecretType type, OtOTPKeyMgrSecret *secret)
+{
+    OtOTPDjState *ds = OT_OTP_DJ(s);
+    int partition;
+    size_t offset;
+
+    switch (type) {
+    case OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0:
+        partition = OTP_PART_SECRET2;
+        offset = A_SECRET2_CREATOR_ROOT_KEY_SHARE0 -
+                 OtOTPPartDescs[partition].offset;
+        break;
+    case OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1:
+        partition = OTP_PART_SECRET2;
+        offset = A_SECRET2_CREATOR_ROOT_KEY_SHARE1 -
+                 OtOTPPartDescs[partition].offset;
+        break;
+    case OTP_KEYMGR_SECRET_CREATOR_SEED:
+        partition = OTP_PART_SECRET2;
+        offset = A_SECRET2_CREATOR_SEED - OtOTPPartDescs[partition].offset;
+        break;
+    case OTP_KEYMGR_SECRET_OWNER_SEED:
+        partition = OTP_PART_SECRET3;
+        offset = A_SECRET3_OWNER_SEED - OtOTPPartDescs[partition].offset;
+        break;
+    default:
+        error_report("%s: %s: invalid OTP keymgr secret type: %d", __func__,
+                     ds->ot_id, type);
+        secret->valid = false;
+        memset(secret->secret, 0, OT_OTP_KEYMGR_SECRET_SIZE);
+        return;
+    }
+
+    g_assert(ot_otp_dj_is_buffered(partition));
+
+    const uint8_t *data_ptr;
+    if (ds->lc_broadcast.current_level & BIT(OT_OTP_LC_SEED_HW_RD_EN)) {
+        data_ptr = (const uint8_t *)ds->partctrls[partition].buffer.data;
+    } else {
+        /* source data from PartInvDefault instead of real buffer */
+        data_ptr = ds->inv_default_parts[partition];
+    }
+
+    secret->valid = ot_otp_dj_get_buffered_part_digest(ds, partition) != 0;
+    memcpy(secret->secret, &data_ptr[offset], OT_OTP_KEYMGR_SECRET_SIZE);
+}
+
 static bool ot_otp_dj_program_req(OtOTPState *s, const uint16_t *lc_tcount,
                                   const uint16_t *lc_state,
                                   ot_otp_program_ack_fn ack, void *opaque)
@@ -4261,6 +4309,7 @@ static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
     oc->get_hw_cfg = &ot_otp_dj_get_hw_cfg;
     oc->get_entropy_cfg = &ot_otp_dj_get_entropy_cfg;
     oc->get_otp_key = &ot_otp_dj_get_otp_key;
+    oc->get_keymgr_secret = &ot_otp_dj_get_keymgr_secret;
     oc->program_req = &ot_otp_dj_program_req;
 
     ot_otp_dj_class_add_inv_def_props(oc);

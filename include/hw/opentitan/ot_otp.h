@@ -109,6 +109,21 @@ typedef struct {
     bool seed_valid; /* whether the seed is valid */
 } OtOTPKey;
 
+typedef enum {
+    OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
+    OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
+    OTP_KEYMGR_SECRET_CREATOR_SEED,
+    OTP_KEYMGR_SECRET_OWNER_SEED,
+    OTP_KEYMGR_SECRET_COUNT
+} OtOTPKeyMgrSecretType;
+
+#define OT_OTP_KEYMGR_SECRET_SIZE 32u /* 256 bits (for both keys and seeds) */
+
+typedef struct {
+    uint8_t secret[OT_OTP_KEYMGR_SECRET_SIZE]; /* key/seed data */
+    bool valid; /* whether the key/seed data is valid */
+} OtOTPKeyMgrSecret;
+
 struct OtOTPState {
     SysBusDevice parent_obj;
 };
@@ -159,6 +174,16 @@ struct OtOTPClass {
      * @key the key record to update
      */
     void (*get_otp_key)(OtOTPState *s, OtOTPKeyType type, OtOTPKey *key);
+
+    /*
+     * Retrieve Key Manager secret (key or seeds).
+     *
+     * @s the OTP device
+     * @type the type of secret to retrieve
+     * @secret the key manager secret record to update
+     */
+    void (*get_keymgr_secret)(OtOTPState *s, OtOTPKeyMgrSecretType type,
+                              OtOTPKeyMgrSecret *secret);
 
     /**
      * Request the OTP to program the state, transition count pair.
