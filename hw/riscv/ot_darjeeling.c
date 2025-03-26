@@ -51,6 +51,7 @@
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/opentitan/ot_i2c_dj.h"
 #include "hw/opentitan/ot_ibex_wrapper.h"
+#include "hw/opentitan/ot_keymgr_dpe.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/opentitan/ot_lc_ctrl.h"
 #include "hw/opentitan/ot_mbx.h"
@@ -623,7 +624,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("clock-src", CLKMGR),
-            OT_DJ_SOC_DEVLINK("edn", EDN0)
+            OT_DJ_SOC_DEVLINK("edn", EDN0),
+            OT_DJ_SOC_DEVLINK("keymgr", KEYMGR_DPE)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("clock-name", "trans.kmac"),
@@ -653,15 +655,26 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
     },
     [OT_DJ_SOC_DEV_KEYMGR_DPE] = {
-        .type = TYPE_UNIMPLEMENTED_DEVICE,
-        .name = "ot-keymgr_dpe",
-        .cfg = &ibex_unimp_configure,
+        .type = TYPE_OT_KEYMGR_DPE,
         .memmap = MEMMAPENTRIES(
             { .base = 0x21140000u }
         ),
+        .gpio = IBEXGPIOCONNDEFS(
+            OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 122),
+            OT_DJ_SOC_GPIO_ALERT(0, 63),
+            OT_DJ_SOC_GPIO_ALERT(1, 64)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("edn", EDN0),
+            OT_DJ_SOC_DEVLINK("kmac", KMAC),
+            OT_DJ_SOC_DEVLINK("lc_ctrl", LC_CTRL),
+            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_DJ_SOC_DEVLINK("rom0", ROM0),
+            OT_DJ_SOC_DEVLINK("rom1", ROM1)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("size", 0x100u),
-            IBEX_DEV_BOOL_PROP("warn-once", true)
+            IBEX_DEV_UINT_PROP("edn-ep", 0u),
+            IBEX_DEV_UINT_PROP("kmac-app", 0u)
         ),
     },
     [OT_DJ_SOC_DEV_CSRNG] = {
@@ -861,7 +874,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
     },
     [OT_DJ_SOC_DEV_MBX_JTAG] = {
         OT_DJ_SOC_DEV_MBX_DUAL(7, 0x22000800u, "ot-mbx.sram", 155, 89,
-		                       DEBUG_MEMORY(OT_DJ_DEBUG_MBX_JTAG_ADDR)),
+                               DEBUG_MEMORY(OT_DJ_DEBUG_MBX_JTAG_ADDR)),
     },
     [OT_DJ_SOC_DEV_DMA] = {
         .type = TYPE_OT_DMA,
@@ -1153,6 +1166,8 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
                              OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN),
             OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN, OTP_CTRL,
                              OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN),
+            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_KEYMGR_EN, KEYMGR_DPE,
+                             OT_KEYMGR_DPE_ENABLE, 0),
             OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CREATOR_SEED_SW_RW_EN,
                              OTP_CTRL, OT_LC_BROADCAST,
                              OT_OTP_LC_CREATOR_SEED_SW_RW_EN),
