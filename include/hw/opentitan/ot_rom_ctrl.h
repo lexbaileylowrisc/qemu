@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan ROM controller
  *
- * Copyright (c) 2023-2024 Rivos, Inc.
+ * Copyright (c) 2023-2025 Rivos, Inc.
  *
  * Author(s):
  *  Loïc Lefort <loic@rivosinc.com>
@@ -35,5 +35,20 @@ OBJECT_DECLARE_TYPE(OtRomCtrlState, OtRomCtrlClass, OT_ROM_CTRL)
 
 #define OT_ROM_CTRL_GOOD TYPE_OT_ROM_CTRL "-good"
 #define OT_ROM_CTRL_DONE TYPE_OT_ROM_CTRL "-done"
+
+#define OT_ROM_DIGEST_BYTES 32u
+
+struct OtRomCtrlClass {
+    DeviceClass parent_class;
+    ResettablePhases parent_phases;
+
+    /*
+     * Retrieve ROM digest.
+     *
+     * @digest a pointer to an array that will be filled with the ROM digest
+     */
+    void (*get_rom_digest)(const OtRomCtrlState *s,
+                           uint8_t digest[OT_ROM_DIGEST_BYTES]);
+};
 
 #endif /* HW_OPENTITAN_OT_ROM_CTRL */

@@ -114,8 +114,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 #define OT_ROM_CTRL_WORD_BITS  (OT_ROM_CTRL_DATA_BITS + OT_ROM_CTRL_ECC_BITS)
 #define OT_ROM_CTRL_WORD_BYTES ((OT_ROM_CTRL_WORD_BITS + 7u) / 8u)
 
-#define ROM_DIGEST_WORDS 8u
-#define ROM_DIGEST_BYTES (ROM_DIGEST_WORDS * sizeof(uint32_t))
+#define ROM_DIGEST_WORDS (OT_ROM_DIGEST_BYTES / sizeof(uint32_t))
 
 /* clang-format off */
 static const uint8_t SBOX4[16u] = {
@@ -125,12 +124,6 @@ static const uint8_t SBOX4[16u] = {
 
 static const OtKMACAppCfg KMAC_APP_CFG =
     OT_KMAC_CONFIG(CSHAKE, 256u, "", "ROM_CTRL");
-
-struct OtRomCtrlClass {
-    DeviceClass parent_class;
-    DeviceRealize parent_realize;
-    ResettablePhases parent_phases;
-};
 
 struct OtRomCtrlState {
     SysBusDevice parent_obj;
@@ -502,7 +495,7 @@ static uint32_t ot_rom_ctrl_verify_ecc_39_32_u32(
 static void ot_rom_ctrl_unscramble(OtRomCtrlState *s, const uint64_t *src,
                                    uint32_t *dst, unsigned size)
 {
-    unsigned scr_word_size = (size - ROM_DIGEST_BYTES) / sizeof(uint32_t);
+    unsigned scr_word_size = (size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
     unsigned log_addr = 0;
     /* unscramble the whole ROM, except the trailing ROM digest bytes */
     s->recovered_error_count = 0;
@@ -729,7 +722,7 @@ static bool ot_rom_ctrl_load_vmem(OtRomCtrlState *s, const OtRomImg *ri,
             /* spawn hash calculation */
             s->se_buffer = (uint64_t *)baseptr;
             unsigned word_count =
-                (s->size - ROM_DIGEST_BYTES) / sizeof(uint32_t);
+                (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
             s->se_last_pos = word_count * OT_ROM_CTRL_WORD_BYTES;
             s->se_pos = 0;
             ot_rom_ctrl_send_kmac_req(s);
@@ -807,7 +800,8 @@ static bool ot_rom_ctrl_load_hex(OtRomCtrlState *s, const OtRomImg *ri)
 
         /* spawn hash calculation */
         s->se_buffer = (uint64_t *)baseptr;
-        unsigned word_count = (s->size - ROM_DIGEST_BYTES) / sizeof(uint32_t);
+        unsigned word_count =
+            (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
         s->se_last_pos = word_count * OT_ROM_CTRL_WORD_BYTES;
         s->se_pos = 0;
         ot_rom_ctrl_send_kmac_req(s);
@@ -966,6 +960,15 @@ static void ot_rom_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     }
 };
+
+static void ot_rom_ctrl_get_rom_digest(const OtRomCtrlState *s,
+                                       uint8_t digest[OT_ROM_DIGEST_BYTES])
+{
+    g_assert(s != NULL);
+    for (unsigned wix = 0; wix < ROM_DIGEST_WORDS; wix++) {
+        stl_le_p(&digest[wix * sizeof(uint32_t)], s->regs[R_DIGEST_0 + wix]);
+    }
+}
 
 static void ot_rom_ctrl_mem_write(void *opaque, hwaddr addr, uint64_t value,
                                   unsigned size)
@@ -1213,17 +1216,19 @@ static void ot_rom_ctrl_init(Object *obj)
 
 static void ot_rom_ctrl_class_init(ObjectClass *klass, void *data)
 {
-    OtRomCtrlClass *rcc = OT_ROM_CTRL_CLASS(klass);
     (void)data;
 
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(dc);
+    OtRomCtrlClass *rcc = OT_ROM_CTRL_CLASS(klass);
 
     resettable_class_set_parent_phases(rc, NULL, &ot_rom_ctrl_reset_hold, NULL,
                                        &rcc->parent_phases);
     dc->realize = &ot_rom_ctrl_realize;
     device_class_set_props(dc, ot_rom_ctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    rcc->get_rom_digest = &ot_rom_ctrl_get_rom_digest;
 }
 
 static const TypeInfo ot_rom_ctrl_info = {
