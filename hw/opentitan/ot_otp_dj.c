@@ -767,6 +767,7 @@ typedef struct {
     QEMUBH *bh;
     uint16_t signal; /* each bit tells if signal needs to be handled */
     uint16_t level; /* level of the matching signal */
+    uint16_t current_level; /* current level of all signals */
 } OtOTPLcBroadcast;
 
 static_assert(OT_OTP_LC_BROADCAST_COUNT < 8 * sizeof(uint16_t),
@@ -1682,7 +1683,9 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
         unsigned sig = ctz16(bcast->signal);
         uint16_t bit = 1u << (unsigned)sig;
         bcast->signal &= ~bit;
-        bool level = (bool)(bcast->level & bit);
+        bcast->current_level =
+            (bcast->current_level & ~bit) | (bcast->level & bit);
+        bool level = (bool)(bcast->current_level & bit);
 
         trace_ot_otp_lc_broadcast(s->ot_id, sig, level);
 
@@ -1725,8 +1728,7 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
             }
             break;
         case OT_OTP_LC_SEED_HW_RD_EN:
-            qemu_log_mask(LOG_UNIMP, "%s: %s: seed HW read is ignored\n",
-                          __func__, s->ot_id);
+            /* nothing to do here, SEED_HW_RD_EN flag is in current_level */
             break;
         default:
             error_setg(&error_fatal, "%s: %s: unexpected LC broadcast %d\n",
@@ -4099,6 +4101,7 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
 
     s->alert_bm = 0u;
 
+    s->lc_broadcast.current_level = 0u;
     s->lc_broadcast.level = 0u;
     s->lc_broadcast.signal = 0u;
 
