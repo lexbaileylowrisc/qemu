@@ -271,6 +271,27 @@ ot_ibex_wrapper_reset(const char *id, const char *phase) "%s: %s"
 ot_ibex_wrapper_unmap(const char *id, unsigned slot) "%s: region %u"
 ot_ibex_wrapper_update_exec(const char *id, uint32_t bm, bool esc_rx, bool halted, bool in_reset, bool cpu_en) "%s: bm:0x%x esc:%u halted:%u in_reset:%u -> CPU enable %u"
 
+# ot_keymgr_dpe
+
+ot_keymgr_dpe_entropy(const char * id, unsigned reseed_cnt, bool resched) "%s: reseed_cnt: %u, resched: %u"
+ot_keymgr_dpe_error(const char *id, const char *msg) "%s: %s"
+ot_keymgr_dpe_change_working_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
+ot_keymgr_dpe_change_op_status(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
+ot_keymgr_dpe_change_main_fsm_state(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
+ot_keymgr_dpe_go_idle(const char *id) "%s"
+ot_keymgr_dpe_io_read_out(const char *id, uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%08x, pc=0x%x"
+ot_keymgr_dpe_io_write(const char *id, uint32_t addr, const char *regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (%s), val=0x%08x, pc=0x%x"
+ot_keymgr_dpe_irq(const char *id, uint32_t active, uint32_t mask, bool level) "%s: act:0x%08x msk:0x%08x lvl:%u"
+ot_keymgr_dpe_lc_signal(const char *id, int level) "%s: LC signal level:%d"
+ot_keymgr_dpe_main_fsm_tick(const char *id, const char *st, int nst) "%s: [%s:%d]"
+ot_keymgr_dpe_operation(const char *id, const char *op, int nop) "%s: [%s:%d]"
+ot_keymgr_dpe_reset(const char *id) "%s"
+ot_keymgr_dpe_schedule_fsm(const char *id, const char *func, int line) "%s @ %s:%d"
+ot_keymgr_dpe_seed_missing(const char * id, unsigned ix) "%s: #%u"
+ot_keymgr_dpe_sideload_clear(const char *id, const char *sc, int nsc) "%s: [%s:%d]"
+ot_keymgr_dpe_kmac_req(const char *id, uint32_t fifo_len, uint32_t msg_len, bool last) "%s: fifo_len:%u msg_len:%u, last:%d"
+ot_keymgr_dpe_kmac_rsp(const char *id, bool done) "%s: done:%d"
+
 # ot_kmac.c
 
 ot_kmac_app_finished(const char *id, unsigned app_idx) "%s: #%u"
