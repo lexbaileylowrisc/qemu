@@ -80,6 +80,7 @@ config OT_KEYMGR_DPE
     bool
 
 config OT_KMAC
+    select OT_KEYMGR_DPE
     bool
 
 config OT_LC_CTRL

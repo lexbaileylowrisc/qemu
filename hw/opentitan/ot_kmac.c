@@ -33,6 +33,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/bitops.h"
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
@@ -42,6 +43,7 @@
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
+#include "hw/opentitan/ot_keymgr_dpe.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -411,6 +413,7 @@ struct OtKMACState {
     char *ot_id;
     char *clock_name;
     DeviceState *clock_src;
+    OtKeyMgrDpeState *keymgr;
     OtEDNState *edn;
     uint8_t edn_ep;
     uint8_t num_app;
@@ -546,31 +549,56 @@ static inline size_t ot_kmac_get_key_length(OtKMACState *s)
     uint32_t key_len = FIELD_EX32(s->regs[R_KEY_LEN], KEY_LEN, LEN);
     switch (key_len) {
     case 0:
-        return 128u;
+        return 16u;
     case 1u:
-        return 192u;
+        return 24u;
     case 2u:
-        return 256u;
+        return 32u;
     case 3u:
-        return 384u;
+        return 48u;
     case 4u:
-        return 512u;
+        return 64u;
     default:
         /* invalid key length values are traced at register write */
         return 0;
     }
 }
 
-static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t keylen)
+static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t *keylen)
 {
-    for (size_t ix = 0; ix < keylen && ix < (size_t)NUM_KEY_REGS * 4u; ix++) {
-        uint8_t reg = ix >> 2u;
-        uint8_t byteoffset = ix & 3u;
+    uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
+    bool sideload = FIELD_EX32(cfg, CFG_SHADOWED, SIDELOAD) != 0;
 
-        uint8_t share0 =
-            (uint8_t)(s->regs[R_KEY_SHARE0_0 + reg] >> (byteoffset * 8u));
-        uint8_t share1 =
-            (uint8_t)(s->regs[R_KEY_SHARE1_0 + reg] >> (byteoffset * 8u));
+    /* force sideload for app interface */
+    if (s->current_app) {
+        sideload = true;
+    }
+
+    if (sideload) {
+        OtKeyMgrDpeKey keymgr_key;
+        OtKeyMgrDpeClass *kmc = OT_KEYMGR_DPE_GET_CLASS(s->keymgr);
+        kmc->get_kmac_key(s->keymgr, &keymgr_key);
+        *keylen = OT_KEYMGR_DPE_KEY_BYTES;
+        for (size_t ix = 0; ix < *keylen; ix++) {
+            key[ix] = keymgr_key.share0[ix] ^ keymgr_key.share1[ix];
+        }
+        /* only check key validity in App mode */
+        if (s->current_app && !keymgr_key.valid) {
+            ot_kmac_report_error(s, OT_KMAC_ERR_KEY_NOT_VALID,
+                                 s->current_app->index);
+        }
+        return;
+    }
+
+    *keylen = ot_kmac_get_key_length(s);
+    for (size_t ix = 0; ix < *keylen; ix++) {
+        uint8_t reg = ix / sizeof(uint32_t);
+        uint8_t byteoffset = ix & (sizeof(uint32_t) - 1u);
+
+        uint8_t share0 = (uint8_t)(s->regs[R_KEY_SHARE0_0 + reg] >>
+                                   (byteoffset * BITS_PER_BYTE));
+        uint8_t share1 = (uint8_t)(s->regs[R_KEY_SHARE1_0 + reg] >>
+                                   (byteoffset * BITS_PER_BYTE));
         key[ix] = share0 ^ share1;
     }
 }
@@ -887,8 +915,10 @@ static void ot_kmac_process_start(OtKMACState *s)
             /* if KMAC mode is enabled, process key */
             if (cfg->mode == OT_KMAC_MODE_KMAC) {
                 uint8_t key[NUM_KEY_REGS * sizeof(uint32_t)];
-                size_t keylen = ot_kmac_get_key_length(s) / 8u;
-                ot_kmac_get_key(s, key, keylen);
+                size_t keylen = 0;
+                static_assert(OT_KEYMGR_DPE_KEY_BYTES <= ARRAY_SIZE(key),
+                              "key buffer too small to hold sideloaded key");
+                ot_kmac_get_key(s, key, &keylen);
                 sha3_process_kmac_key(&s->ltc_state, key, keylen);
             }
             break;
@@ -1626,6 +1656,8 @@ static Property ot_kmac_properties[] = {
                      DeviceState *),
     DEFINE_PROP_LINK("edn", OtKMACState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKMACState, edn_ep, UINT8_MAX),
+    DEFINE_PROP_LINK("keymgr", OtKMACState, keymgr, TYPE_OT_KEYMGR_DPE,
+                     OtKeyMgrDpeState *),
     DEFINE_PROP_UINT8("num-app", OtKMACState, num_app, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
