@@ -1206,6 +1206,37 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             break;
         }
 
+        /* check for unimplemented config bits */
+        if (val32 & R_CFG_SHADOWED_ENTROPY_MODE_MASK) {
+            qemu_log_mask(
+                LOG_UNIMP,
+                "%s: %s: CFG_SHADOWED.ENTROPY_MODE is not supported\n",
+                __func__, s->ot_id);
+        }
+        if (val32 & R_CFG_SHADOWED_ENTROPY_FAST_PROCESS_MASK) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: CFG_SHADOWED.ENTROPY_FAST_PROCESS is not "
+                          "supported\n",
+                          __func__, s->ot_id);
+        }
+        if (val32 & R_CFG_SHADOWED_MSG_MASK_MASK) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: CFG_SHADOWED.MSG_MASK is not supported\n",
+                          __func__, s->ot_id);
+        }
+        if (val32 & R_CFG_SHADOWED_ENTROPY_READY_MASK) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: CFG_SHADOWED.ENTROPY_READY is not "
+                          "supported\n",
+                          __func__, s->ot_id);
+        }
+        if (val32 & R_CFG_SHADOWED_EN_UNSUPPORTED_MODESTRENGTH_MASK) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: CFG_SHADOWED.EN_UNSUPPORTED_MODESTRENGTH is "
+                          "not supported\n",
+                          __func__, s->ot_id);
+        }
+
         val32 &= CFG_MASK;
         switch (ot_shadow_reg_write(&s->cfg, val32)) {
         case OT_SHADOW_REG_STAGED:
