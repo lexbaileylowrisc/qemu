@@ -416,11 +416,6 @@ struct OtLcCtrlState {
     bool socdbg; /* whether this instance use SoCDbg state */
 };
 
-struct OtLcCtrlClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
-};
-
 /* try to cope with the many ways to encode a transition matrix */
 typedef enum {
     LC_TR_MODE_HISTORICAL, /* what prevailed in EarlGrey */
@@ -2132,6 +2127,14 @@ static void ot_lc_ctrl_configure_km_div(OtLcCtrlState *s)
     }
 }
 
+static void ot_lc_ctrl_get_keymgr_div(const OtLcCtrlState *s,
+                                      OtLcCtrlKeyMgrDiv *div)
+{
+    g_assert(div);
+
+    memcpy(&div->data[0], s->km_divs[s->km_div_type], OT_LC_KEYMGR_DIV_BYTES);
+}
+
 static Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtLcCtrlState, ot_id),
     DEFINE_PROP_LINK("otp_ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP,
@@ -2355,6 +2358,8 @@ static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
     OtLcCtrlClass *lc = OT_LC_CTRL_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_lc_ctrl_reset_enter, NULL, NULL,
                                        &lc->parent_phases);
+
+    lc->get_keymgr_div = &ot_lc_ctrl_get_keymgr_div;
 }
 
 static const TypeInfo ot_lc_ctrl_info = {

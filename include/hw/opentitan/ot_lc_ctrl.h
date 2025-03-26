@@ -65,4 +65,17 @@ typedef struct {
     uint8_t data[OT_LC_KEYMGR_DIV_BYTES];
 } OtLcCtrlKeyMgrDiv;
 
+struct OtLcCtrlClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+
+    /*
+     * Retrieve key manager diversification value.
+     *
+     * @div a pointer to a structure that will be filled with the key manager
+     *      diversification data.
+     */
+    void (*get_keymgr_div)(const OtLcCtrlState *s, OtLcCtrlKeyMgrDiv *div);
+};
+
 #endif /* HW_OPENTITAN_OT_LC_CTRL_H */
