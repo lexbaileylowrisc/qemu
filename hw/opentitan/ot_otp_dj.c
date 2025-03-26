@@ -1713,17 +1713,17 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
             break;
         case OT_OTP_LC_CREATOR_SEED_SW_RW_EN:
             for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-                if (OtOTPPartDescs[OTP_PART_SECRET2].iskeymgr_creator) {
-                    s->partctrls[OTP_PART_SECRET2].read_lock = !level;
-                    s->partctrls[OTP_PART_SECRET2].write_lock = !level;
+                if (OtOTPPartDescs[ix].iskeymgr_creator) {
+                    s->partctrls[ix].read_lock = !level;
+                    s->partctrls[ix].write_lock = !level;
                 }
             }
             break;
         case OT_OTP_LC_OWNER_SEED_SW_RW_EN:
             for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
-                if (OtOTPPartDescs[OTP_PART_SECRET2].iskeymgr_owner) {
-                    s->partctrls[OTP_PART_SECRET2].read_lock = !level;
-                    s->partctrls[OTP_PART_SECRET2].write_lock = !level;
+                if (OtOTPPartDescs[ix].iskeymgr_owner) {
+                    s->partctrls[ix].read_lock = !level;
+                    s->partctrls[ix].write_lock = !level;
                 }
             }
             break;
