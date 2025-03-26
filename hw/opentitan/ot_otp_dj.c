@@ -3710,11 +3710,11 @@ static void ot_otp_dj_pwr_load_hw_cfg(OtOTPDjState *s)
     OtOTPHWCfg *hw_cfg = s->hw_cfg;
 
     memcpy(hw_cfg->device_id, &otp->data[R_HW_CFG0_DEVICE_ID],
-           sizeof(*hw_cfg->device_id));
+           sizeof(hw_cfg->device_id));
     memcpy(hw_cfg->manuf_state, &otp->data[R_HW_CFG0_MANUF_STATE],
-           sizeof(*hw_cfg->manuf_state));
-    memcpy(&hw_cfg->soc_dbg_state[0], &otp->data[R_HW_CFG1_SOC_DBG_STATE],
-           sizeof(uint32_t));
+           sizeof(hw_cfg->manuf_state));
+    memcpy(hw_cfg->soc_dbg_state, &otp->data[R_HW_CFG1_SOC_DBG_STATE],
+           sizeof(hw_cfg->soc_dbg_state));
     /* do not prevent execution from SRAM if no OTP configuration is loaded */
     hw_cfg->en_sram_ifetch =
         s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH] :

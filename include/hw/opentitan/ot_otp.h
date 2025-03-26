@@ -52,13 +52,18 @@ typedef enum {
     OT_OTP_LC_BROADCAST_COUNT,
 } OtOtpLcBroadcast;
 
+#define OT_OTP_HWCFG_DEVICE_ID_BYTES     32u
+#define OT_OTP_HWCFG_MANUF_STATE_BYTES   32u
+#define OT_OTP_HWCFG_SOC_DBG_STATE_BYTES 4u
+
 /*
  * Hardware configuration (for HW_CFG partition)
  */
 typedef struct {
-    uint32_t device_id[8u];
-    uint32_t manuf_state[8u];
-    uint16_t soc_dbg_state[2u]; /* may be meaningless, dep. on the platform */
+    uint8_t device_id[OT_OTP_HWCFG_DEVICE_ID_BYTES];
+    uint8_t manuf_state[OT_OTP_HWCFG_MANUF_STATE_BYTES];
+    /* soc_dbg_state may be meaningless, dep. on the platform */
+    uint8_t soc_dbg_state[OT_OTP_HWCFG_SOC_DBG_STATE_BYTES];
     /* the following value is stored as OT_MULTIBITBOOL8 */
     uint8_t en_sram_ifetch;
 } OtOTPHWCfg;
