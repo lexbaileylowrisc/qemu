@@ -545,7 +545,9 @@ ot_unimp_alert(const char *id, unsigned ix) "%s: #%u"
 
 # ot_vmapper.c
 
-ot_vmapper_new_phy_addr(char *id, bool insn, uint32_t vaddr, uint32_t paddr) "%s: i:%u v:0x%08x p:0x%08x"
-ot_vmapper_override_vcpu_config(char *id) "%s: redirect address resolution and force PMP to use virtual addresses"
-ot_vmapper_translate_enable(char *id, bool insn, unsigned slot, uint32_t src, uint32_t dst, unsigned size) "%s: i:%u s:%u src:0x%08x dst:0x%08x size:0x%x"
-ot_vmapper_translate_disable(char *id, bool insn, unsigned slot) "%s: i:%u s:%u"
+ot_vmapper_disable_exec(const char *id, unsigned slot, const char *name, uint32_t src, unsigned size, bool dis) "%s: s:%u [%s] src:0x%08x size:0x%x dis:%u"
+ot_vmapper_new_phy_addr(const char *id, bool insn, uint32_t vaddr, uint32_t paddr) "%s: i:%u v:0x%08x p:0x%08x"
+ot_vmapper_override_vcpu_config(const char *id) "%s: redirect address resolution and force PMP to use virtual addresses"
+ot_vmapper_translate_enable(const char *id, bool insn, unsigned slot, uint32_t src, uint32_t dst, unsigned size) "%s: i:%u s:%u src:0x%08x dst:0x%08x size:0x%x"
+ot_vmapper_translate_disable(const char *id, bool insn, unsigned slot) "%s: i:%u s:%u"
+ot_vmapper_show_range(const char *id) "%s"

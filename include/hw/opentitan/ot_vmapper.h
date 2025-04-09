@@ -30,6 +30,7 @@
 
 #include "qom/object.h"
 #include "exec/hwaddr.h"
+#include "exec/memory.h"
 
 #define TYPE_OT_VMAPPER "ot-vmapper"
 OBJECT_DECLARE_TYPE(OtVMapperState, OtVMapperClass, OT_VMAPPER)
@@ -47,11 +48,21 @@ OBJECT_DECLARE_TYPE(OtVMapperState, OtVMapperClass, OT_VMAPPER)
 typedef void (*OtVMapperTranslate)(OtVMapperState *s, bool insn, unsigned slot,
                                    hwaddr src, hwaddr dst, size_t size);
 
+/*
+ * Disable the execution of an address range.
+ *
+ * @mr the memory region to manage
+ * @disable whether to disable execution or (re-)enable it
+ */
+typedef void (*OtVMapperDisableExec)(OtVMapperState *s, const MemoryRegion *mr,
+                                     bool disable);
+
 struct OtVMapperClass {
     DeviceClass parent_class;
     ResettablePhases parent_phases;
 
     OtVMapperTranslate translate;
+    OtVMapperDisableExec disable_exec;
 
     OtVMapperState **instances;
     unsigned num_instances;
