@@ -348,7 +348,8 @@ static void ot_rom_ctrl_send_kmac_req(OtRomCtrlState *s)
     g_assert(blen == req.msg_len);
     memcpy(req.msg_data, buf, req.msg_len);
 
-    ot_kmac_app_request(s->kmac, s->kmac_app, &req);
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    kc->app_request(s->kmac, s->kmac_app, &req);
 }
 
 static void
@@ -1089,8 +1090,9 @@ static void ot_rom_ctrl_reset_hold(Object *obj, ResetType type)
     ibex_irq_set(&s->pwrmgr_done, false);
 
     /* connect to KMAC */
-    ot_kmac_connect_app(s->kmac, s->kmac_app, &KMAC_APP_CFG,
-                        ot_rom_ctrl_handle_kmac_response, s);
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    kc->connect_app(s->kmac, s->kmac_app, &KMAC_APP_CFG,
+                    ot_rom_ctrl_handle_kmac_response, s);
 }
 
 static void ot_rom_ctrl_reset_exit(Object *obj, ResetType type)
@@ -1139,6 +1141,9 @@ static void ot_rom_ctrl_realize(DeviceState *dev, Error **errp)
     g_assert(s->size);
     g_assert(s->kmac);
     g_assert(s->kmac_app != UINT8_MAX);
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    g_assert(kc->connect_app);
+    g_assert(kc->app_request);
 
     memory_region_init_rom_device_nomigrate(&s->mem, OBJECT(dev),
                                             &ot_rom_ctrl_mem_ops, s,

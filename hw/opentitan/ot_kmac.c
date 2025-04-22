@@ -364,7 +364,7 @@ typedef struct {
     unsigned index; /* app index */
     OtKMACAppCfg cfg; /* configuration */
     OtKMACAppReq req; /* pending request */
-    ot_kmac_response_fn fn; /* response callback */
+    OtKmacResponse fn; /* response callback */
     void *opaque; /* opaque parameter to response callback */
     bool connected; /* app is connected to KMAC */
     bool req_pending; /* true if pending request */
@@ -403,11 +403,6 @@ struct OtKMACState {
     OtEDNState *edn;
     uint8_t edn_ep;
     uint8_t num_app;
-};
-
-struct OtKMACClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
 };
 
 static void
@@ -1444,9 +1439,9 @@ static void ot_kmac_msgfifo_write(void *opaque, hwaddr addr, uint64_t value,
     ot_kmac_trigger_deferred_bh(s);
 }
 
-void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
-                         const OtKMACAppCfg *cfg, ot_kmac_response_fn fn,
-                         void *opaque)
+static void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
+                                const OtKMACAppCfg *cfg, OtKmacResponse fn,
+                                void *opaque)
 {
     g_assert(app_idx < s->num_app);
 
@@ -1512,8 +1507,8 @@ static void ot_kmac_start_pending_app(OtKMACState *s)
     }
 }
 
-void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
-                         const OtKMACAppReq *req)
+static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
+                                const OtKMACAppReq *req)
 {
     g_assert(app_idx < s->num_app);
 
@@ -1668,6 +1663,9 @@ static void ot_kmac_class_init(ObjectClass *klass, void *data)
     OtKMACClass *kc = OT_KMAC_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_kmac_reset_enter, NULL, NULL,
                                        &kc->parent_phases);
+
+    kc->connect_app = &ot_kmac_connect_app;
+    kc->app_request = &ot_kmac_app_request;
 }
 
 static const TypeInfo ot_kmac_info = {

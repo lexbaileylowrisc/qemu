@@ -1085,7 +1085,8 @@ static void ot_lc_ctrl_kmac_request(OtLcCtrlState *s)
 
     TRACE_LC_CTRL("KMAC input: %s", ot_lc_ctrl_hexdump(&req.msg_data[0], 8u));
 
-    ot_kmac_app_request(s->kmac, s->kmac_app, &req);
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    kc->app_request(s->kmac, s->kmac_app, &req);
 }
 
 static void ot_lc_ctrl_kmac_handle_resp(void *opaque, const OtKMACAppRsp *rsp)
@@ -1499,8 +1500,9 @@ static void ot_lc_ctrl_initialize(OtLcCtrlState *s)
         (((uint32_t)s->silicon_creator_id) << 16u) | ((uint32_t)s->product_id);
     s->regs[R_HW_REVISION1] = (uint32_t)s->revision_id;
 
-    ot_kmac_connect_app(s->kmac, s->kmac_app, &OT_LC_CTRL_KMAC_CONFIG,
-                        &ot_lc_ctrl_kmac_handle_resp, s);
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    kc->connect_app(s->kmac, s->kmac_app, &OT_LC_CTRL_KMAC_CONFIG,
+                    &ot_lc_ctrl_kmac_handle_resp, s);
 
     uint32_t enc_state = ot_lc_ctrl_load_lc_info(s);
     if (enc_state == UINT32_MAX) {
@@ -2157,6 +2159,9 @@ static void ot_lc_ctrl_realize(DeviceState *dev, Error **errp)
     g_assert(s->otp_ctrl);
     g_assert(s->kmac);
     g_assert(s->kmac_app != UINT8_MAX);
+    OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
+    g_assert(kc->connect_app);
+    g_assert(kc->app_request);
 
     /*
      * "ID of the silicon creator. Assigned by the OpenTitan project.
