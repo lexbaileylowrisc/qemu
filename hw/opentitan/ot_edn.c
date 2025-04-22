@@ -202,6 +202,7 @@ typedef enum {
 } OtEDNFsmState;
 
 typedef struct {
+    OtCSRNGClass *csrng; /* CSRNG class */
     OtCSRNGState *device; /* CSRNG instance */
     qemu_irq genbits_ready; /* Set when ready to receive entropy */
     uint32_t appid; /* unique HW application id to identify on CSRNG */
@@ -586,8 +587,9 @@ static void ot_edn_connect_csrng(OtEDNState *s)
     if (!c->genbits_ready) {
         qemu_irq req_sts;
         req_sts = qdev_get_gpio_in_named(DEVICE(s), TYPE_OT_EDN "-req_sts", 0);
-        c->genbits_ready = ot_csnrg_connect_hw_app(c->device, c->appid, req_sts,
-                                                   &ot_edn_fill_bits, s);
+        c->genbits_ready =
+            c->csrng->connect_hw_app(c->device, c->appid, req_sts,
+                                     &ot_edn_fill_bits, s);
         g_assert(c->genbits_ready);
     }
 }
@@ -621,7 +623,7 @@ ot_edn_push_csrng_request(OtEDNState *s, bool auto_mode, uint32_t length)
     for (unsigned cix = 0; cix < length; cix++) {
         trace_ot_edn_push_csrng_command(c->appid, auto_mode ? "auto" : "boot",
                                         c->buffer[cix]);
-        res = ot_csrng_push_command(c->device, c->appid, c->buffer[cix]);
+        res = c->csrng->push_command(c->device, c->appid, c->buffer[cix]);
         if (res != CSRNG_STATUS_SUCCESS) {
             trace_ot_edn_push_csrng_error(c->appid, (int)res);
             ot_edn_change_state(s, EDN_REJECT_CSRNG_ENTROPY);
@@ -876,7 +878,7 @@ static void ot_edn_handle_disable(OtEDNState *s)
 
     /* disconnect */
     qemu_irq rdy;
-    rdy = ot_csnrg_connect_hw_app(c->device, c->appid, NULL, NULL, NULL);
+    rdy = c->csrng->connect_hw_app(c->device, c->appid, NULL, NULL, NULL);
     g_assert(!rdy);
 
     c->genbits_ready = NULL;
@@ -1028,7 +1030,7 @@ static void ot_edn_handle_sw_cmd_req(OtEDNState *s, uint32_t value)
     c->sw_ack = false;
 
     trace_ot_edn_push_csrng_command(c->appid, "sw", value);
-    OtCSRNGCmdStatus res = ot_csrng_push_command(c->device, c->appid, value);
+    OtCSRNGCmdStatus res = c->csrng->push_command(c->device, c->appid, value);
     if (res != CSRNG_STATUS_SUCCESS) {
         xtrace_ot_edn_error(c->appid, "CSRNG rejected command");
         s->sw_cmd_ready = false;
@@ -1529,6 +1531,9 @@ static void ot_edn_realize(DeviceState *dev, Error **errp)
     /* check that properties have been initialized */
     g_assert(r->device);
     g_assert(r->appid < OT_CSRNG_HW_APP_MAX);
+    r->csrng = OT_CSRNG_GET_CLASS(r->device);
+    g_assert(r->csrng->connect_hw_app);
+    g_assert(r->csrng->push_command);
 }
 
 static void ot_edn_init(Object *obj)

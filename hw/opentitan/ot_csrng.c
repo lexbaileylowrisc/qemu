@@ -315,7 +315,7 @@ typedef struct OtCSRNGInstance {
             bool fips;
         } sw;
         struct {
-            ot_csrng_genbit_filler_fn filler;
+            OtCsrngGenbitFiller filler;
             void *opaque;
             QEMUBH *filler_bh;
             qemu_irq req_sts;
@@ -354,11 +354,6 @@ struct OtCSRNGState {
 
     DeviceState *random_src;
     OtOTPState *otp_ctrl;
-};
-
-struct OtCSRNGClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
 };
 
 /* clang-format off */
@@ -430,12 +425,12 @@ static OtCSRNDCmdResult
 ot_csrng_drng_reseed(OtCSRNGInstance *inst, DeviceState *rand_dev, bool flag0);
 
 /* -------------------------------------------------------------------------- */
-/* Public API */
+/* Client API */
 /* -------------------------------------------------------------------------- */
 
-qemu_irq
-ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
-                        ot_csrng_genbit_filler_fn filler_fn, void *opaque)
+static qemu_irq
+ot_csrng_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
+                        OtCsrngGenbitFiller filler_fn, void *opaque)
 {
     g_assert(app_id < OT_CSRNG_HW_APP_MAX);
 
@@ -473,8 +468,8 @@ ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
                                   (int)app_id);
 }
 
-OtCSRNGCmdStatus ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
-                                       uint32_t word)
+static OtCSRNGCmdStatus
+ot_csrng_push_command(OtCSRNGState *s, unsigned app_id, uint32_t word)
 {
     g_assert(app_id < OT_CSRNG_HW_APP_MAX);
 
@@ -2091,6 +2086,9 @@ static void ot_csrng_class_init(ObjectClass *klass, void *data)
     OtCSRNGClass *cc = OT_CSRNG_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_csrng_reset_enter, NULL, NULL,
                                        &cc->parent_phases);
+
+    cc->connect_hw_app = &ot_csrng_connect_hw_app;
+    cc->push_command = &ot_csrng_push_command;
 }
 
 static const TypeInfo ot_csrng_info = {

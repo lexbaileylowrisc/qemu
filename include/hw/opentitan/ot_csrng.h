@@ -86,8 +86,8 @@ REG32(OT_CSNRG_CMD, 0)
  * @fips   whether the entropy adhere to NIST requirements (simulated only,
  *         current implementation does not support FIPS requirements)
  */
-typedef void (*ot_csrng_genbit_filler_fn)(void *opaque, const uint32_t *bits,
-                                          bool fips);
+typedef void (*OtCsrngGenbitFiller)(void *opaque, const uint32_t *bits,
+                                    bool fips);
 
 /**
  * Connect or disconnect a HW application to the CSRNG device.
@@ -104,23 +104,9 @@ typedef void (*ot_csrng_genbit_filler_fn)(void *opaque, const uint32_t *bits,
  * @return an IRQ line that signals whether the HW application is ready to
  *         receive entropy, i.e. genbits_ready
  */
-qemu_irq
-ot_csnrg_connect_hw_app(OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
-                        ot_csrng_genbit_filler_fn filler_fn, void *opaque);
-
-
-/**
- * Request a generated entropy block.
- * CSRNG only deliver (a single) entropy packet after this command is received,
- * thought the genbit_filler function. This function is asynchronously called
- * after this function is received.
- *
- * @s the CSRNG device
- * @app_id the HW application unique identifier, as provided with the connect
- *         command
- * @return 0 on success, -1 otherwise.
- */
-int ot_csrng_request_entropy(OtCSRNGState *s, unsigned app_id);
+typedef qemu_irq (*OtCsnrgConnectHwApp)(
+    OtCSRNGState *s, unsigned app_id, qemu_irq req_sts,
+    OtCsrngGenbitFiller filler_fn, void *opaque);
 
 /**
  * Push a new command.
@@ -132,7 +118,15 @@ int ot_csrng_request_entropy(OtCSRNGState *s, unsigned app_id);
  * @return CSRNG_STATUS_SUCCESS on success. If failure, the req_sts is not
  *         signalled for this command.
  */
-OtCSRNGCmdStatus ot_csrng_push_command(OtCSRNGState *s, unsigned app_id,
-                                       uint32_t word);
+typedef OtCSRNGCmdStatus (*OtCsrngPushCommand)(OtCSRNGState *s, unsigned app_id,
+                                               uint32_t word);
+
+struct OtCSRNGClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+
+    OtCsnrgConnectHwApp connect_hw_app;
+    OtCsrngPushCommand push_command;
+};
 
 #endif /* HW_OPENTITAN_OT_CSRNG_H */
