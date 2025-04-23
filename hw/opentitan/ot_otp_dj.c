@@ -3561,7 +3561,10 @@ static void ot_otp_dj_pwr_load_hw_cfg(OtOTPDjState *s)
            sizeof(*hw_cfg->manuf_state));
     memcpy(&hw_cfg->soc_dbg_state[0], &otp->data[R_HW_CFG1_SOC_DBG_STATE],
            sizeof(uint32_t));
-    hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH];
+    /* do not prevent execution from SRAM if no OTP configuration is loaded */
+    hw_cfg->en_sram_ifetch =
+        s->blk ? (uint8_t)otp->data[R_HW_CFG1_EN_SRAM_IFETCH] :
+                 OT_MULTIBITBOOL8_TRUE;
 }
 
 static void ot_otp_dj_pwr_load_tokens(OtOTPDjState *s)

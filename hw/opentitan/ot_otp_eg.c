@@ -1174,8 +1174,9 @@ static void ot_otp_eg_load_hw_cfg(OtOTPEgState *s)
     memcpy(hw_cfg->manuf_state, &otp->data[R_MANUF_STATE],
            sizeof(*hw_cfg->manuf_state));
     memset(hw_cfg->soc_dbg_state, 0, sizeof(hw_cfg->soc_dbg_state));
-    hw_cfg->en_sram_ifetch = (uint8_t)otp->data[R_EN_SRAM_IFETCH];
-
+    /* do not prevent execution from SRAM if no OTP configuration is loaded */
+    hw_cfg->en_sram_ifetch =
+        s->blk ? (uint8_t)otp->data[R_EN_SRAM_IFETCH] : OT_MULTIBITBOOL8_TRUE;
     entropy_cfg->en_csrng_sw_app_read =
         (uint8_t)otp->data[R_EN_CSRNG_SW_APP_READ];
 }
