@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Board Compatible with OpenTitan EarlGrey FPGA platform
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Copyright (c) 2024-2025 lowRISC contributors.
  *
  * Author(s):
@@ -899,11 +899,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 34)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ret")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ret"),
+            IBEX_DEV_BOOL_PROP("ifetch", false)
         ),
     },
     [OT_EG_SOC_DEV_FLASH_CTRL] = {
@@ -1098,11 +1100,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 59)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_EG_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", SRAM_MAIN_SIZE),
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ram")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ram"),
+            IBEX_DEV_BOOL_PROP("ifetch", true)
         ),
     },
     [OT_EG_SOC_DEV_ROM_CTRL] = {

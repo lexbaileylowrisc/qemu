@@ -717,11 +717,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(0, 70)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_DJ_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x10000u),
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ram")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ram"),
+            IBEX_DEV_BOOL_PROP("ifetch", true)
         ),
     },
     [OT_DJ_SOC_DEV_SRAM_MBX] = {
@@ -734,11 +736,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(0, 71)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_DJ_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "mbx")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "mbx"),
+            IBEX_DEV_BOOL_PROP("ifetch", false)
         ),
     },
     [OT_DJ_SOC_DEV_ROM0] = {
@@ -1354,11 +1358,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(0, 52)
         ),
         .link = IBEXDEVICELINKDEFS(
-            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL)
+            OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
+            OT_DJ_SOC_DEVLINK("vmapper", VMAPPER)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("size", 0x1000u),
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ret")
+            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "ret"),
+            IBEX_DEV_BOOL_PROP("ifetch", false)
         ),
     },
     [OT_DJ_SOC_DEV_VMAPPER] = {
