@@ -53,6 +53,7 @@
 #include "qemu/osdep.h"
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
+#include "qemu/timer.h"
 #include "hw/i2c/i2c.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
@@ -287,6 +288,9 @@ struct OtI2CDjState {
     /* Set if NACK has been received by target during transaction. */
     bool target_rx_nack;
 
+    /* Whether I2C timings should be checked before comm. over the bus */
+    bool check_timings;
+
     /* TX: Scheduled responses for target mode. */
     Fifo8 target_tx_fifo;
 
@@ -465,6 +469,133 @@ static void ot_i2c_dj_target_write_tx_fifo(OtI2CDjState *s, uint8_t val)
     fifo8_push(&s->target_tx_fifo, val);
 }
 
+static bool ot_i2c_dj_check_timings(OtI2CDjState *s)
+{
+    uint32_t thigh = FIELD_EX32(s->regs[R_TIMING0], TIMING0, THIGH);
+    uint32_t tlow = FIELD_EX32(s->regs[R_TIMING0], TIMING0, TLOW);
+    uint32_t tr = FIELD_EX32(s->regs[R_TIMING1], TIMING1, T_R);
+    uint32_t tf = FIELD_EX32(s->regs[R_TIMING1], TIMING1, T_F);
+    uint32_t tsusta = FIELD_EX32(s->regs[R_TIMING2], TIMING2, TSU_STA);
+    uint32_t thdsta = FIELD_EX32(s->regs[R_TIMING2], TIMING2, THD_STA);
+    uint32_t tsudat = FIELD_EX32(s->regs[R_TIMING3], TIMING3, TSU_DAT);
+    uint32_t thddat = FIELD_EX32(s->regs[R_TIMING3], TIMING3, THD_DAT);
+    uint32_t tsusto = FIELD_EX32(s->regs[R_TIMING4], TIMING4, TSU_STO);
+    uint32_t tbuf = FIELD_EX32(s->regs[R_TIMING4], TIMING4, T_BUF);
+
+    bool res = true;
+
+    /* Check I2C HW limits (I2C input clock cycles) */
+
+    if (thddat == 0u || (thdsta < thddat + 2u)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid THD settings\n",
+                      __func__, s->ot_id);
+        res = false;
+    }
+    if (tlow < 3u + tr) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid Tlow settings\n",
+                      __func__, s->ot_id);
+        res = false;
+    }
+    if (thigh < 4u) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid Thigh settings\n",
+                      __func__, s->ot_id);
+        res = false;
+    }
+
+    /* Convert clock cycles into nanoseconds based on input clock */
+
+    thigh = (uint32_t)((((uint64_t)thigh) * NANOSECONDS_PER_SECOND) / s->pclk);
+    tlow = (uint32_t)((((uint64_t)tlow) * NANOSECONDS_PER_SECOND) / s->pclk);
+
+    /* Check I2C limits (from I2C specification rev. 6, table 10) */
+
+    if (((thigh >= 4000u) && (tlow < 4700u)) ||
+        ((tlow >= 4700u) && (thigh < 4000u)) ||
+        ((thigh >= 600) && (tlow < 1300u)) ||
+        ((tlow >= 1300u) && (thigh < 600u)) ||
+        ((thigh < 260u) || (tlow < 500u))) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid Thigh/Tlow settings\n",
+                      __func__, s->ot_id);
+        res = false;
+        return res; /* subsequent checks would lead to more errors */
+    }
+
+    uint32_t tsusta_min;
+    uint32_t tsudat_min;
+    uint32_t tsusto_min;
+    uint32_t tbuf_min;
+    uint32_t tr_max;
+    uint32_t tf_max;
+    if (thigh >= 4000u) {
+        /* standard mode */
+        tsusta_min = 4700u;
+        tsudat_min = 250u;
+        tsusto_min = 4000u;
+        tbuf_min = 4700u;
+        tr_max = 1000u;
+        tf_max = 300u;
+    } else if (thigh > 600u) {
+        /* fast mode */
+        tsusta_min = 600u;
+        tsudat_min = 100u;
+        tsusto_min = 600u;
+        tbuf_min = 1300u;
+        tr_max = 300u;
+        tf_max = 300u;
+    } else {
+        /* fast mode plus */
+        tsusta_min = 260u;
+        tsudat_min = 50u;
+        tsusto_min = 260u;
+        tbuf_min = 500u;
+        tr_max = 120u;
+        tf_max = 1230u;
+    }
+
+    tsusta =
+        (uint32_t)((((uint64_t)tsusta) * NANOSECONDS_PER_SECOND) / s->pclk);
+    tsudat =
+        (uint32_t)((((uint64_t)tsudat) * NANOSECONDS_PER_SECOND) / s->pclk);
+    tsusto =
+        (uint32_t)((((uint64_t)tsusto) * NANOSECONDS_PER_SECOND) / s->pclk);
+    tbuf = (uint32_t)((((uint64_t)tbuf) * NANOSECONDS_PER_SECOND) / s->pclk);
+    tr = (uint32_t)((((uint64_t)tr) * NANOSECONDS_PER_SECOND) / s->pclk);
+    tf = (uint32_t)((((uint64_t)tf) * NANOSECONDS_PER_SECOND) / s->pclk);
+
+    if (tsusta < tsusta_min) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Tsu;sta too low\n", __func__,
+                      s->ot_id);
+        res = false;
+    }
+    if (tsudat < tsudat_min) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Tsu;dat too low\n", __func__,
+                      s->ot_id);
+        res = false;
+    }
+    if (tsusto < tsusto_min) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Tsu;sto too low\n", __func__,
+                      s->ot_id);
+        res = false;
+    }
+    if (tbuf < tbuf_min) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Tbuf too low\n", __func__,
+                      s->ot_id);
+        res = false;
+    }
+    if (tr > tr_max) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Tr too high\n", __func__,
+                      s->ot_id);
+        res = false;
+    }
+    if (tf > tf_max) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Tf too high\n", __func__,
+                      s->ot_id);
+        res = false;
+    }
+
+    return res;
+}
+
 static uint64_t ot_i2c_dj_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtI2CDjState *s = opaque;
@@ -549,8 +680,6 @@ static uint64_t ot_i2c_dj_read(void *opaque, hwaddr addr, unsigned size)
     case R_TIMING3:
     case R_TIMING4:
         val32 = s->regs[reg];
-        qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
-                      __func__, s->ot_id, REG_NAME(reg));
         break;
     case R_INTR_TEST:
     case R_FDATA:
@@ -745,11 +874,15 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
          * Allow both ENABLEHOST and ENABLETARGET to be set so the
          * host can decide how to configure and use the controller.
          */
-        if (FIELD_EX32(val32, CTRL, ENABLEHOST)) {
-            ARRAY_FIELD_DP32(s->regs, CTRL, ENABLEHOST, 1u);
-        }
-        if (FIELD_EX32(val32, CTRL, ENABLETARGET)) {
-            ARRAY_FIELD_DP32(s->regs, CTRL, ENABLETARGET, 1u);
+        val32 &= R_CTRL_LLPBK_MASK | R_CTRL_ENABLEHOST_MASK |
+                 R_CTRL_ENABLETARGET_MASK;
+        s->regs[reg] = val32;
+        if (s->regs[reg]) {
+            /* check timings once, each time one or more timings are updated */
+            if (s->check_timings) {
+                ot_i2c_dj_check_timings(s);
+                s->check_timings = false;
+            }
         }
         break;
     case R_FDATA:
@@ -787,13 +920,29 @@ static void ot_i2c_dj_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] = val32;
         break;
     case R_TIMING0:
-    case R_TIMING1:
-    case R_TIMING2:
-    case R_TIMING3:
-    case R_TIMING4:
-        qemu_log_mask(LOG_UNIMP, "%s: %s: register %s is not implemented\n",
-                      __func__, s->ot_id, REG_NAME(reg));
+        val32 &= R_TIMING0_THIGH_MASK | R_TIMING0_TLOW_MASK;
         s->regs[reg] = val32;
+        s->check_timings = true;
+        break;
+    case R_TIMING1:
+        val32 &= R_TIMING1_T_R_MASK | R_TIMING1_T_F_MASK;
+        s->regs[reg] = val32;
+        s->check_timings = true;
+        break;
+    case R_TIMING2:
+        val32 &= R_TIMING2_TSU_STA_MASK | R_TIMING2_THD_STA_MASK;
+        s->regs[reg] = val32;
+        s->check_timings = true;
+        break;
+    case R_TIMING3:
+        val32 &= R_TIMING3_TSU_DAT_MASK | R_TIMING3_THD_DAT_MASK;
+        s->regs[reg] = val32;
+        s->check_timings = true;
+        break;
+    case R_TIMING4:
+        val32 &= R_TIMING4_TSU_STO_MASK | R_TIMING4_T_BUF_MASK;
+        s->regs[reg] = val32;
+        s->check_timings = true;
         break;
     case R_STATUS:
     case R_RDATA:
@@ -983,6 +1132,8 @@ static void ot_i2c_dj_reset_enter(Object *obj, ResetType type)
     ot_i2c_dj_host_reset_rx_fifo(s);
     ot_i2c_dj_target_reset_tx_fifo(s);
     ot_i2c_dj_target_reset_rx_fifo(s);
+
+    s->check_timings = true;
 }
 
 static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
@@ -991,6 +1142,7 @@ static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->pclk);
 
     /* TODO: check if the following can be moved to ot_i2c_dj_init */
     s->bus = i2c_init_bus(dev, TYPE_OT_I2C_DJ);
