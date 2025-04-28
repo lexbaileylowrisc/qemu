@@ -49,6 +49,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_flash.h"
+#include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -763,6 +764,7 @@ struct OtFlashState {
     OtFlashStorage flash;
 
     BlockBackend *blk; /* Flash backend */
+    OtVMapperState *vmapper; /* to disable execution from flash */
     bool no_mem_prot; /* Flag to disable mem protection features */
 };
 
@@ -1501,6 +1503,14 @@ static void ot_flash_op_execute(OtFlashState *s)
     }
 }
 
+static void ot_flash_update_exec(OtFlashState *s)
+{
+    OtVMapperClass *vm = OT_VMAPPER_GET_CLASS(s->vmapper);
+    bool ifetch = s->regs[R_EXEC] == EXEC_EN;
+
+    vm->disable_exec(s->vmapper, &s->mmio.mem, !ifetch);
+}
+
 static bool ot_flash_check_program_resolution(OtFlashState *s)
 {
     unsigned start_address = s->op.address / sizeof(uint32_t);
@@ -1765,6 +1775,7 @@ static void ot_flash_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_EXEC:
         s->regs[reg] = val32;
+        ot_flash_update_exec(s);
         break;
     case R_CONTROL:
         val32 &= CONTROL_MASK;
@@ -2226,30 +2237,6 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
-static Property ot_flash_properties[] = {
-    DEFINE_PROP_DRIVE("drive", OtFlashState, blk),
-    /* Optionally disable memory protection, as searching for valid memory
-    regions and checking their config can slow down regular operation. */
-    DEFINE_PROP_BOOL("no-mem-prot", OtFlashState, no_mem_prot, false),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static const MemoryRegionOps ot_flash_regs_ops = {
-    .read = &ot_flash_regs_read,
-    .write = &ot_flash_regs_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .impl.min_access_size = 4u,
-    .impl.max_access_size = 4u,
-};
-
-static const MemoryRegionOps ot_flash_csrs_ops = {
-    .read = &ot_flash_csrs_read,
-    .write = &ot_flash_csrs_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-    .impl.min_access_size = 4u,
-    .impl.max_access_size = 4u,
-};
-
 #ifdef USE_HEXDUMP
 static char dbg_hexbuf[256];
 static const char *ot_flash_hexdump(const uint8_t *buf, size_t size)
@@ -2467,7 +2454,35 @@ static uint64_t ot_flash_mem_read(void *opaque, hwaddr addr, unsigned size)
 
     return (uint64_t)val32;
 };
+#endif /* #if DATA_PART_USE_IO_OPS */
 
+static Property ot_flash_properties[] = {
+    DEFINE_PROP_DRIVE("drive", OtFlashState, blk),
+    DEFINE_PROP_LINK("vmapper", OtFlashState, vmapper, TYPE_OT_VMAPPER,
+                     OtVMapperState *),
+    /* Optionally disable memory protection, as searching for valid memory
+    regions and checking their config can slow down regular operation. */
+    DEFINE_PROP_BOOL("no-mem-prot", OtFlashState, no_mem_prot, false),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static const MemoryRegionOps ot_flash_regs_ops = {
+    .read = &ot_flash_regs_read,
+    .write = &ot_flash_regs_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl.min_access_size = 4u,
+    .impl.max_access_size = 4u,
+};
+
+static const MemoryRegionOps ot_flash_csrs_ops = {
+    .read = &ot_flash_csrs_read,
+    .write = &ot_flash_csrs_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .impl.min_access_size = 4u,
+    .impl.max_access_size = 4u,
+};
+
+#if DATA_PART_USE_IO_OPS
 static const MemoryRegionOps ot_flash_mem_ops = {
     .read = &ot_flash_mem_read,
     .endianness = DEVICE_NATIVE_ENDIAN,
@@ -2581,10 +2596,24 @@ static void ot_flash_reset_enter(Object *obj, ResetType type)
     ot_flash_reset_prog_fifo(s);
 }
 
+static void ot_flash_reset_exit(Object *obj, ResetType type)
+{
+    OtFlashClass *c = OT_FLASH_GET_CLASS(obj);
+    OtFlashState *s = OT_FLASH(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    ot_flash_update_exec(s);
+}
+
 static void ot_flash_realize(DeviceState *dev, Error **errp)
 {
     OtFlashState *s = OT_FLASH(dev);
     (void)errp;
+
+    g_assert(s->vmapper);
 
     ot_flash_load(s, &error_fatal);
 
@@ -2641,7 +2670,8 @@ static void ot_flash_class_init(ObjectClass *klass, void *data)
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtFlashClass *fc = OT_FLASH_CLASS(klass);
-    resettable_class_set_parent_phases(rc, &ot_flash_reset_enter, NULL, NULL,
+    resettable_class_set_parent_phases(rc, &ot_flash_reset_enter, NULL,
+                                       &ot_flash_reset_exit,
                                        &fc->parent_phases);
 }
 
