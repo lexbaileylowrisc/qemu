@@ -929,6 +929,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(3, 38),
             OT_EG_SOC_GPIO_ALERT(4, 39)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("vmapper", VMAPPER)
+        ),
     },
     [OT_EG_SOC_DEV_AES] = {
         .type = TYPE_OT_AES,
