@@ -1258,7 +1258,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_UINT_PROP("num-rom", 2u),
-            IBEX_DEV_UINT_PROP("version", OT_PWMGR_VERSION_DJ)
+            IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_DJ_PRE)
         ),
     },
     [OT_DJ_SOC_DEV_RSTMGR] = {
