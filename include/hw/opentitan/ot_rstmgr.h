@@ -33,14 +33,23 @@
 #define TYPE_OT_RSTMGR "ot-rstmgr"
 OBJECT_DECLARE_TYPE(OtRstMgrState, OtRstMgrClass, OT_RSTMGR)
 
+/* Supported ResetManager versions */
 typedef enum {
+    OT_RSTMGR_VERSION_EG_252,
+    OT_RSTMGR_VERSION_DJ_PRE,
+    OT_RSTMGR_VERSION_COUNT,
+} OtRstMgrVersion;
+
+/* Some reset reasons may not exist on the current platform */
+typedef enum {
+    OT_RSTMGR_RESET_NONE,
     OT_RSTMGR_RESET_POR,
     OT_RSTMGR_RESET_LOW_POWER,
     OT_RSTMGR_RESET_SW,
     OT_RSTMGR_RESET_SYSCTRL,
-    /* mutually exclusive, depends on the actual machine */
-    OT_RSTMGR_RESET_SOC_PROXY = OT_RSTMGR_RESET_SYSCTRL,
+    OT_RSTMGR_RESET_SOC_PROXY,
     OT_RSTMGR_RESET_AON_TIMER,
+    OT_RSTMGR_RESET_SENSOR,
     OT_RSTMGR_RESET_PWRMGR,
     OT_RSTMGR_RESET_ALERT_HANDLER,
     OT_RSTMGR_RESET_RV_DM,

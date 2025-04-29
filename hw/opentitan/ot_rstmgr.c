@@ -29,13 +29,16 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
+#include "hw/opentitan/ot_i2c_dj.h"
 #include "hw/opentitan/ot_rstmgr.h"
+#include "hw/opentitan/ot_spi_device.h"
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
@@ -46,13 +49,7 @@
 #include "sysemu/runstate.h"
 #include "trace.h"
 
-
-#define PARAM_RD_WIDTH         32u
-#define PARAM_IDX_WIDTH        4u
-#define PARAM_NUM_HW_RESETS    5u
-#define PARAM_NUM_SW_RESETS    8u
-#define PARAM_NUM_TOTAL_RESETS 8u
-#define PARAM_NUM_ALERTS       2u
+#define PARAM_NUM_ALERTS 2u
 
 /* clang-format off */
 REG32(ALERT_TEST, 0x0u)
@@ -123,24 +120,42 @@ REG32(ERR_CODE, 0x6cu)
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
+/* clang-format off */
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
 static const char *REG_NAMES[REGS_COUNT] = {
-    REG_NAME_ENTRY(ALERT_TEST),      REG_NAME_ENTRY(RESET_REQ),
-    REG_NAME_ENTRY(RESET_INFO),      REG_NAME_ENTRY(ALERT_REGWEN),
-    REG_NAME_ENTRY(ALERT_INFO_CTRL), REG_NAME_ENTRY(ALERT_INFO_ATTR),
-    REG_NAME_ENTRY(ALERT_INFO),      REG_NAME_ENTRY(CPU_REGWEN),
-    REG_NAME_ENTRY(CPU_INFO_CTRL),   REG_NAME_ENTRY(CPU_INFO_ATTR),
-    REG_NAME_ENTRY(CPU_INFO),        REG_NAME_ENTRY(SW_RST_REGWEN_0),
-    REG_NAME_ENTRY(SW_RST_REGWEN_1), REG_NAME_ENTRY(SW_RST_REGWEN_2),
-    REG_NAME_ENTRY(SW_RST_REGWEN_3), REG_NAME_ENTRY(SW_RST_REGWEN_4),
-    REG_NAME_ENTRY(SW_RST_REGWEN_5), REG_NAME_ENTRY(SW_RST_REGWEN_6),
-    REG_NAME_ENTRY(SW_RST_REGWEN_7), REG_NAME_ENTRY(SW_RST_CTRL_N_0),
-    REG_NAME_ENTRY(SW_RST_CTRL_N_1), REG_NAME_ENTRY(SW_RST_CTRL_N_2),
-    REG_NAME_ENTRY(SW_RST_CTRL_N_3), REG_NAME_ENTRY(SW_RST_CTRL_N_4),
-    REG_NAME_ENTRY(SW_RST_CTRL_N_5), REG_NAME_ENTRY(SW_RST_CTRL_N_6),
-    REG_NAME_ENTRY(SW_RST_CTRL_N_7), REG_NAME_ENTRY(ERR_CODE),
+    REG_NAME_ENTRY(ALERT_TEST),
+    REG_NAME_ENTRY(RESET_REQ),
+    REG_NAME_ENTRY(RESET_INFO),
+    REG_NAME_ENTRY(ALERT_REGWEN),
+    REG_NAME_ENTRY(ALERT_INFO_CTRL),
+    REG_NAME_ENTRY(ALERT_INFO_ATTR),
+    REG_NAME_ENTRY(ALERT_INFO),
+    REG_NAME_ENTRY(CPU_REGWEN),
+    REG_NAME_ENTRY(CPU_INFO_CTRL),
+    REG_NAME_ENTRY(CPU_INFO_ATTR),
+    REG_NAME_ENTRY(CPU_INFO),
+    REG_NAME_ENTRY(SW_RST_REGWEN_0),
+    REG_NAME_ENTRY(SW_RST_REGWEN_1),
+    REG_NAME_ENTRY(SW_RST_REGWEN_2),
+    REG_NAME_ENTRY(SW_RST_REGWEN_3),
+    REG_NAME_ENTRY(SW_RST_REGWEN_4),
+    REG_NAME_ENTRY(SW_RST_REGWEN_5),
+    REG_NAME_ENTRY(SW_RST_REGWEN_6),
+    REG_NAME_ENTRY(SW_RST_REGWEN_7),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_0),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_1),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_2),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_3),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_4),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_5),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_6),
+    REG_NAME_ENTRY(SW_RST_CTRL_N_7),
+    REG_NAME_ENTRY(ERR_CODE),
 };
 #undef REG_NAME_ENTRY
+/* clang-format on */
+
+#define OT_RSTMGR_SW_RESET_MAX 8u
 
 struct OtRstMgrState {
     SysBusDevice parent_obj;
@@ -153,10 +168,11 @@ struct OtRstMgrState {
     CPUState *cpu;
 
     uint32_t *regs;
+    bool por; /* Power-On Reset property */
 
     char *ot_id;
     uint32_t fatal_reset;
-    bool por; /* Power-On Reset property */
+    uint8_t version;
 };
 
 struct OtRstMgrClass {
@@ -174,32 +190,77 @@ typedef struct {
     bool reset;
 } OtRstMgrResetDesc;
 
-static const OtRstMgrResettable SW_RESETTABLE_DEVICES[PARAM_NUM_SW_RESETS] = {
-    [0u] = { NULL, 0u },
-    [1u] = { TYPE_OT_SPI_HOST, 0u },
-    [2u] = { TYPE_OT_SPI_HOST, 1u },
-    [3u] = { NULL, 0u },
-    [4u] = { NULL, 0u },
-    [5u] = { NULL, 0u },
-    [6u] = { NULL, 0u },
-    [7u] = { NULL, 0u },
+typedef struct {
+    uint32_t reset_request_codes[OT_RSTMGR_RESET_COUNT];
+    OtRstMgrResettable sw_resettable_devices[OT_RSTMGR_SW_RESET_MAX];
+} OtRstMgrConfig;
+
+static const OtRstMgrConfig RSTMGR_CONFIG[OT_RSTMGR_VERSION_COUNT] = {
+    [OT_RSTMGR_VERSION_EG_252] = {
+        .reset_request_codes = {
+            [OT_RSTMGR_RESET_POR] = BIT(0),
+            [OT_RSTMGR_RESET_LOW_POWER] = BIT(1),
+            [OT_RSTMGR_RESET_SW] = BIT(2),
+            [OT_RSTMGR_RESET_SYSCTRL] = BIT(3),
+            [OT_RSTMGR_RESET_AON_TIMER] = BIT(4),
+            [OT_RSTMGR_RESET_SENSOR] = BIT(5),
+            [OT_RSTMGR_RESET_PWRMGR] = BIT(6),
+            [OT_RSTMGR_RESET_ALERT_HANDLER] = BIT(7),
+            [OT_RSTMGR_RESET_RV_DM] = BIT(8),
+        },
+        .sw_resettable_devices = {
+            [0u] = { TYPE_OT_SPI_DEVICE, 0u },
+            [1u] = { TYPE_OT_SPI_HOST, 0u },
+            [2u] = { TYPE_OT_SPI_HOST, 1u },
+            /*
+             * Not yet supported
+             *
+             * [3u] = { TYPE_OT_USB, 0u },
+             * [4u] = { TYPE_OT_USB, 1u },
+             * [5u] = { TYPE_OT_I2C_EG, 0u },
+             * [6u] = { TYPE_OT_I2C_EG, 1u },
+             * [7u] = { TYPE_OT_I2C_EG, 2u },
+             */
+        }
+    },
+    [OT_RSTMGR_VERSION_DJ_PRE] = {
+        .reset_request_codes = {
+            [OT_RSTMGR_RESET_POR] = BIT(0),
+            [OT_RSTMGR_RESET_LOW_POWER] = BIT(1),
+            [OT_RSTMGR_RESET_SW] = BIT(2),
+            [OT_RSTMGR_RESET_AON_TIMER] = BIT(3),
+            [OT_RSTMGR_RESET_SOC_PROXY] = BIT(4),
+            [OT_RSTMGR_RESET_PWRMGR] = BIT(5),
+            [OT_RSTMGR_RESET_ALERT_HANDLER] = BIT(6),
+            [OT_RSTMGR_RESET_RV_DM] = BIT(7),
+        },
+        .sw_resettable_devices = {
+            [0u] = { TYPE_OT_SPI_DEVICE, 0u },
+            [1u] = { TYPE_OT_SPI_HOST, 0u },
+            [2u] = { TYPE_OT_I2C_DJ, 0u },
+        }
+    },
 };
 
-static_assert(PARAM_NUM_TOTAL_RESETS == OT_RSTMGR_RESET_COUNT,
-              "Invalid reset count");
-
+/* clang-format off */
 #define REQ_NAME_ENTRY(_req_) [OT_RSTMGR_RESET_##_req_] = stringify(_req_)
 static const char *OT_RST_MGR_REQUEST_NAMES[] = {
+    REQ_NAME_ENTRY(NONE),
     REQ_NAME_ENTRY(POR),
     REQ_NAME_ENTRY(LOW_POWER),
     REQ_NAME_ENTRY(SW),
     REQ_NAME_ENTRY(SYSCTRL),
+    REQ_NAME_ENTRY(SOC_PROXY),
     REQ_NAME_ENTRY(AON_TIMER),
+    REQ_NAME_ENTRY(SYSCTRL),
+    REQ_NAME_ENTRY(SENSOR),
     REQ_NAME_ENTRY(PWRMGR),
     REQ_NAME_ENTRY(ALERT_HANDLER),
     REQ_NAME_ENTRY(RV_DM),
 };
 #undef REQ_NAME_ENTRY
+/* clang-format on */
+
 #define REQ_NAME(_req_) \
     ((_req_) < ARRAY_SIZE(OT_RST_MGR_REQUEST_NAMES)) ? \
         OT_RST_MGR_REQUEST_NAMES[(_req_)] : \
@@ -263,9 +324,11 @@ static int ot_rstmgr_sw_rst_walker(DeviceState *dev, void *opaque)
 
 static void ot_rstmgr_update_sw_reset(OtRstMgrState *s, unsigned devix)
 {
-    assert(devix < ARRAY_SIZE(SW_RESETTABLE_DEVICES));
+    assert(devix < OT_RSTMGR_SW_RESET_MAX);
 
-    const OtRstMgrResettable *rst = &SW_RESETTABLE_DEVICES[devix];
+    const OtRstMgrConfig *config = &RSTMGR_CONFIG[s->version];
+    const OtRstMgrResettable *rst = &config->sw_resettable_devices[devix];
+
     if (!rst->typename) {
         qemu_log_mask(LOG_UNIMP,
                       "%s: %s: Reset for slot %u not yet implemented", __func__,
@@ -305,13 +368,21 @@ static void ot_rstmgr_reset_req(void *opaque, int irq, int level)
 
     bool fastclk = ((unsigned)level >> 8u) & 1u;
 
-    level &= 0xff;
+    level &= UINT8_MAX;
     g_assert(level < OT_RSTMGR_RESET_COUNT);
 
-    OtRstMgrResetReq req = (OtRstMgrResetReq)level;
-    s->regs[R_RESET_INFO] = 1u << req;
+    const OtRstMgrConfig *config = &RSTMGR_CONFIG[s->version];
+    uint32_t req = config->reset_request_codes[level];
 
-    trace_ot_rstmgr_reset_req(s->ot_id, REQ_NAME(req), req, fastclk);
+    if (!req) {
+        qemu_log_mask(LOG_UNIMP, "%s: %s: unsupported reset request %d\n",
+                      __func__, s->ot_id, level);
+        return;
+    }
+
+    s->regs[R_RESET_INFO] = req;
+
+    trace_ot_rstmgr_reset_req(s->ot_id, REQ_NAME(level), req, fastclk);
 
     qemu_bh_schedule(s->bus_reset_bh);
 }
@@ -495,8 +566,7 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 static Property ot_rstmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtRstMgrState, ot_id),
     DEFINE_PROP_UINT32("fatal_reset", OtRstMgrState, fatal_reset, 0),
-    /* this property is only used to store initial reset reason state */
-    DEFINE_PROP_BOOL("por", OtRstMgrState, por, true),
+    DEFINE_PROP_UINT8("version", OtRstMgrState, version, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -534,11 +604,15 @@ static void ot_rstmgr_reset_enter(Object *obj, ResetType type)
     s->regs[R_RESET_REQ] = OT_MULTIBITBOOL4_FALSE;
     s->regs[R_ALERT_REGWEN] = R_ALERT_REGWEN_EN_MASK;
     s->regs[R_CPU_REGWEN] = R_CPU_REGWEN_EN_MASK;
-    for (unsigned ix = 0; ix < PARAM_NUM_SW_RESETS; ix++) {
-        s->regs[R_SW_RST_REGWEN_0 + ix] = SW_RST_REGWEN_EN_MASK;
-    }
-    for (unsigned ix = 0; ix < PARAM_NUM_SW_RESETS; ix++) {
-        s->regs[R_SW_RST_CTRL_N_0 + ix] = SW_RST_CTRL_VAL_MASK;
+
+    const OtRstMgrConfig *config = &RSTMGR_CONFIG[s->version];
+
+    for (unsigned devix = 0; devix < OT_RSTMGR_SW_RESET_MAX; devix++) {
+        const OtRstMgrResettable *rst = &config->sw_resettable_devices[devix];
+        if (rst->typename) {
+            s->regs[R_SW_RST_REGWEN_0 + devix] = SW_RST_REGWEN_EN_MASK;
+            s->regs[R_SW_RST_CTRL_N_0 + devix] = SW_RST_CTRL_VAL_MASK;
+        }
     }
 
     ibex_irq_lower(&s->soc_reset);
@@ -574,6 +648,10 @@ static void ot_rstmgr_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->version < OT_RSTMGR_VERSION_COUNT);
+
+    /* only used to store initial reset reason state; never reset it */
+    s->por = true;
 }
 
 static void ot_rstmgr_init(Object *obj)
