@@ -785,6 +785,9 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(0, 23),
             OT_EG_SOC_GPIO_ALERT(1, 24)
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("version", OT_RSTMGR_VERSION_EG_252)
+        ),
     },
     [OT_EG_SOC_DEV_CLKMGR] = {
         .type = TYPE_OT_CLKMGR,

@@ -1272,6 +1272,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_SIGNAL(OT_RSTMGR_SW_RST, 0, PWRMGR,
                              OT_PWRMGR_SW_RST, 0)
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("version", OT_RSTMGR_VERSION_DJ_PRE)
+        ),
     },
     [OT_DJ_SOC_DEV_CLKMGR] = {
         .type = TYPE_OT_CLKMGR,
