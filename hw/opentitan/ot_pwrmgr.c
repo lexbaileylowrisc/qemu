@@ -321,33 +321,33 @@ typedef struct {
 } OtPwrMgrConfig;
 
 /* clang-format off */
-static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWMGR_VERSION_COUNT] = {
-    [OT_PWMGR_VERSION_EG] = {
+static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWRMGR_VERSION_COUNT] = {
+    [OT_PWRMGR_VERSION_EG_252] = {
         .wakeup_count = 6u,
         .reset_count = 2u,
         .reset_mask = 0x3u
     },
-    [OT_PWMGR_VERSION_DJ] = {
+    [OT_PWRMGR_VERSION_DJ_PRE] = {
         .wakeup_count = 6u,
         .reset_count = 2u,
         .reset_mask = 0x3u
     },
 };
 
-static int PWRMGR_RESET_DISPATCH[OT_PWMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
-    [OT_PWMGR_VERSION_EG] = {
+static int PWRMGR_RESET_DISPATCH[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
+    [OT_PWRMGR_VERSION_EG_252] = {
         [0] = OT_RSTMGR_RESET_SYSCTRL,
         [1] = OT_RSTMGR_RESET_AON_TIMER,
     },
-    [OT_PWMGR_VERSION_DJ] = {
+    [OT_PWRMGR_VERSION_DJ_PRE] = {
         [0] = OT_RSTMGR_RESET_AON_TIMER,
         [1] = OT_RSTMGR_RESET_SOC_PROXY,
     },
 };
 
 static const char *
-PWRMGR_WAKEUP_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
-    [OT_PWMGR_VERSION_EG] = {
+PWRMGR_WAKEUP_NAMES[OT_PWRMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
+    [OT_PWRMGR_VERSION_EG_252] = {
         [0] = "SYSRST",
         [1] = "ADC_CTRL",
         [2] = "PINMUX",
@@ -355,7 +355,7 @@ PWRMGR_WAKEUP_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
         [4] = "AON_TIMER",
         [5] = "SENSOR",
     },
-    [OT_PWMGR_VERSION_DJ] = {
+    [OT_PWRMGR_VERSION_DJ_PRE] = {
         [0] = "PINMUX",
         [1] = "USBDEV",
         [2] = "AON_TIMER",
@@ -365,12 +365,12 @@ PWRMGR_WAKEUP_NAMES[OT_PWMGR_VERSION_COUNT][PWRMGR_WAKEUP_MAX] = {
     },
 };
 
-static const char *PWRMGR_RST_NAMES[OT_PWMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
-    [OT_PWMGR_VERSION_EG] = {
+static const char *PWRMGR_RST_NAMES[OT_PWRMGR_VERSION_COUNT][PARAM_NUM_RST_REQS] = {
+    [OT_PWRMGR_VERSION_EG_252] = {
         [0] = "SYSRST",
         [1] = "AON_TIMER",
     },
-    [OT_PWMGR_VERSION_DJ] = {
+    [OT_PWRMGR_VERSION_DJ_PRE] = {
         [0] = "AON_TIMER",
         [1] = "SOC_PROXY",
     }
@@ -920,8 +920,6 @@ static void ot_pwrmgr_reset_enter(Object *obj, ResetType type)
     OtPwrMgrClass *c = OT_PWRMGR_GET_CLASS(obj);
     OtPwrMgrState *s = OT_PWRMGR(obj);
 
-    g_assert(s->version < OT_PWMGR_VERSION_COUNT);
-
     /* sanity checks for platform reset count and mask */
     g_assert(PWRMGR_CONFIG[s->version].reset_count <= PARAM_NUM_RST_REQS);
     g_assert(ctpop32(PWRMGR_CONFIG[s->version].reset_mask + 1u) == 1);
@@ -980,6 +978,7 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->version < OT_PWRMGR_VERSION_COUNT);
 
     if (s->num_rom) {
         if (s->num_rom > 8u * sizeof(uint8_t)) {

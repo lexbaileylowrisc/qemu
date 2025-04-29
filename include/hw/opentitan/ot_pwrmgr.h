@@ -36,9 +36,9 @@ OBJECT_DECLARE_TYPE(OtPwrMgrState, OtPwrMgrClass, OT_PWRMGR)
 
 /* Supported PowerManager versions */
 typedef enum {
-    OT_PWMGR_VERSION_EG,
-    OT_PWMGR_VERSION_DJ,
-    OT_PWMGR_VERSION_COUNT,
+    OT_PWRMGR_VERSION_EG_252,
+    OT_PWRMGR_VERSION_DJ_PRE,
+    OT_PWRMGR_VERSION_COUNT,
 } OtPwrMgrVersion;
 
 /* Match PWRMGR_PARAM_*_WKUP_REQ_IDX definitions */
