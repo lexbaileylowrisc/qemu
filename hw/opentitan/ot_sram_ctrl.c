@@ -370,10 +370,7 @@ static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
 
     if (!s->vmapper) {
         if (!ifetch) {
-            qemu_log_mask(LOG_UNIMP,
-                          "%s: %s: Cannot disable execution, "
-                          "VMapper not associated\n",
-                          __func__, s->ot_id);
+            trace_ot_sram_ctrl_ifetch_warning(s->ot_id);
         }
 
         /* for now, vmapper is not a mandatory feature */
