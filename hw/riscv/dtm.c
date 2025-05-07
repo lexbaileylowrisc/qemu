@@ -309,6 +309,7 @@ static void riscv_dtm_tap_dmi_capture(TapDataHandler *tdh)
                 qemu_log_mask(LOG_UNIMP, "%s: Unknown DM address 0x%x\n",
                               __func__, addr);
             } else {
+                trace_riscv_dtm_tap_dmi_capture(addr);
                 value = dm->dc->read_value(dm->dev);
             }
         }
@@ -360,9 +361,11 @@ static void riscv_dtm_tap_dmi_update(TapDataHandler *tdh)
         g_assert_not_reached();
         return;
     case DMI_READ:
+        trace_riscv_dtm_tap_dmi_update(addr, "read");
         s->dmistat = dm->dc->read_rq(dm->dev, addr - dm->base);
         break;
     case DMI_WRITE:
+        trace_riscv_dtm_tap_dmi_update(addr, "write");
         value = (uint32_t)FIELD_EX64(tdh->value, DMI, DATA);
         s->dmistat = dm->dc->write_rq(dm->dev, addr - dm->base, value);
         break;
