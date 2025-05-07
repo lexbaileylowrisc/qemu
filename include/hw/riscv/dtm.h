@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Debug Tranport Module
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
@@ -29,6 +29,7 @@
 
 #include "qom/object.h"
 #include "exec/hwaddr.h"
+#include "hw/resettable.h"
 #include "hw/riscv/debug.h"
 
 #define TYPE_RISCV_DTM "riscv.dtm"
@@ -36,6 +37,7 @@ OBJECT_DECLARE_TYPE(RISCVDTMState, RISCVDTMClass, RISCV_DTM)
 
 struct RISCVDTMClass {
     DeviceClass parent_class;
+    ResettablePhases parent_phases;
 
     /*
      * Register a debug module on the Debug Transport Module.

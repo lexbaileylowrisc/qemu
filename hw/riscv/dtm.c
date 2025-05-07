@@ -1,7 +1,7 @@
 /*
  * QEMU Debug Transport Module
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
@@ -111,7 +111,6 @@ struct RISCVDTMState {
     unsigned abits; /* address bit count */
 };
 
-static void riscv_dtm_reset(DeviceState *dev);
 static RISCVDebugModule *riscv_dtm_get_dm(RISCVDTMState *s, uint32_t addr);
 static void riscv_dtm_sort_dms(RISCVDTMState *s);
 static void riscv_dtm_activate_dms(RISCVDTMState *s);
@@ -522,9 +521,14 @@ static Property riscv_dtm_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void riscv_dtm_reset(DeviceState *dev)
+static void riscv_dtm_reset_enter(Object *obj, ResetType type)
 {
-    RISCVDTMState *s = RISCV_DTM(dev);
+    RISCVDTMClass *c = RISCV_DTM_GET_CLASS(obj);
+    RISCVDTMState *s = RISCV_DTM(obj);
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
 
     s->address = 0;
     s->last_dm = NULL;
@@ -556,10 +560,14 @@ static void riscv_dtm_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &riscv_dtm_reset);
     dc->realize = &riscv_dtm_realize;
     device_class_set_props(dc, riscv_dtm_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    RISCVDTMClass *tc = RISCV_DTM_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &riscv_dtm_reset_enter, NULL, NULL,
+                                       &tc->parent_phases);
 
     RISCVDTMClass *dmc = RISCV_DTM_CLASS(klass);
     dmc->register_dm = &riscv_dtm_register_dm;
@@ -571,8 +579,8 @@ static const TypeInfo riscv_dtm_info = {
     .parent = TYPE_DEVICE,
     .instance_size = sizeof(RISCVDTMState),
     .instance_init = &riscv_dtm_init,
-    .class_init = &riscv_dtm_class_init,
     .class_size = sizeof(RISCVDTMClass),
+    .class_init = &riscv_dtm_class_init,
 };
 
 static void riscv_dtm_register_types(void)
