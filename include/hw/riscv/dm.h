@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Debug Module
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
@@ -31,7 +31,7 @@
 #include "exec/memattrs.h"
 
 #define TYPE_RISCV_DM "riscv-dm"
-OBJECT_DECLARE_SIMPLE_TYPE(RISCVDMState, RISCV_DM)
+OBJECT_DECLARE_TYPE(RISCVDMState, RISCVDMClass, RISCV_DM)
 
 #define RISCV_DM_ACK_LINES TYPE_RISCV_DM ".ack"
 

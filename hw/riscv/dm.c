@@ -1,7 +1,7 @@
 /*
  * QEMU Debug Module Interface and Controller
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
  *
@@ -241,7 +241,8 @@ REG32(FLAGS, RISCV_DM_FLAGS_OFFSET)
 
 static_assert((A_LAST - A_FIRST) < 64u, "too many registers");
 
-#define REG_BIT(_addr_)    (1ull << ((_addr_) - A_FIRST))
+#define REG_BIT(_addr_) \
+    (((_addr_) >= (uint32_t)A_FIRST) ? (1ull << ((_addr_) - A_FIRST)) : 0u)
 #define REG_BIT_DEF(_reg_) REG_BIT(A_##_reg_)
 
 #define DM_REG_COUNT (1u << (ADDRESS_BITS))
@@ -349,6 +350,11 @@ struct RISCVDMState {
     uint32_t *cpu_idx; /* array of hart_count CPU index */
 };
 
+struct RISCVDMClass {
+    SysBusDeviceClass parent_class;
+    ResettablePhases parent_phases;
+};
+
 typedef RISCVDMCmdErr CmdErr;
 
 /** Abstract command types */
@@ -383,8 +389,6 @@ struct RISCVDMDMReg {
 /*
  * Forward declarations
  */
-
-static void riscv_dm_reset(DeviceState *dev);
 
 static bool riscv_dm_cond_autoexec(RISCVDMState *dm, bool prgbf,
                                    unsigned regix);
@@ -557,6 +561,13 @@ static RISCVDebugResult
 riscv_dm_write_rq(RISCVDebugDeviceState *dev, uint32_t addr, uint32_t value)
 {
     RISCVDMState *dm = RISCV_DM(dev);
+
+    if (resettable_is_in_reset(OBJECT(dev))) {
+        if (addr != A_DMCONTROL) {
+            xtrace_riscv_dm_error(dm->soc, "write rejected: DM in reset");
+            return RISCV_DEBUG_FAILED;
+        }
+    }
 
     CmdErr ret;
     bool autoexec = false;
@@ -1206,6 +1217,30 @@ static uint32_t riscv_dm_insn_illegal(void)
 
 static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
 {
+    if (unlikely(!FIELD_EX32(value, DMCONTROL, DMACTIVE))) {
+        /* Debug Module reset */
+        if (!resettable_is_in_reset(OBJECT(dm))) {
+            trace_riscv_dm_reset(dm->soc, "debugger requested DM reset");
+            resettable_assert_reset(OBJECT(dm), RESET_TYPE_COLD);
+        }
+
+        /*
+         * "the dmactive bit is the only bit which can be written to something
+         *  other than its reset value)."
+         * if 0, reset the debug module itself. Do not exit from reset until
+         * DMCONTROL.dmactive is not set.
+         */
+        dm->regs[A_DMCONTROL] &= ~R_DMCONTROL_DMACTIVE_MASK;
+
+        /* do not update DMCONTROL while it is maintained in reset */
+        return CMD_ERR_NONE;
+    }
+
+    if (unlikely(resettable_is_in_reset(OBJECT(dm)))) {
+        trace_riscv_dm_reset(dm->soc, "debugger released DM reset");
+        resettable_release_reset(OBJECT(dm), RESET_TYPE_COLD);
+    }
+
     bool hasel = (bool)FIELD_EX32(value, DMCONTROL, HASEL);
 
     uint32_t hartsel = FIELD_EX32(value, DMCONTROL, HARTSELLO) |
@@ -1228,7 +1263,8 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
         } else {
             RISCVDMHartState *hart = &dm->harts[hartsel];
             dm->hart = hart;
-            CPUState *cs = CPU(dm->hart->cpu);
+            g_assert(hart->cpu);
+            CPUState *cs = CPU(hart->cpu);
 
             if (value & R_DMCONTROL_HARTRESET_MASK) {
                 if (!cs->held_in_reset) {
@@ -1317,12 +1353,6 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
              R_DMCONTROL_HARTRESET_MASK;
     /* HARTSELHI never used, since HARTSELLO already encodes up to 1K harts */
     dm->regs[A_DMCONTROL] = FIELD_DP32(value, DMCONTROL, HARTSELLO, hartsel);
-
-    if (unlikely(!FIELD_EX32(dm->regs[A_DMCONTROL], DMCONTROL, DMACTIVE))) {
-        /* Debug Module reset */
-        trace_riscv_dm_reset(dm->soc, "debugger requested DM reset");
-        riscv_dm_reset(DEVICE(dm));
-    }
 
     return CMD_ERR_NONE;
 }
@@ -1464,6 +1494,11 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
     uint64_t mask = 1u;
     for (; hix < hcount; hix++, mask <<= 1u) {
         RISCVDMHartState *hart = &dm->harts[hix];
+#ifdef TRACE_CPU_STATES
+        CPUState *cs;
+        g_assert(hart->cpu);
+        cs = CPU(hart->cpu);
+#endif
         if (hart->resumed) {
             resumeack += 1;
         }
@@ -1485,8 +1520,8 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
                 continue;
             }
 #ifdef TRACE_CPU_STATES
-            qemu_log("%s: %s became available %p: %u\n", __func__, dm->soc,
-                     CPU(hart->cpu), CPU(hart->cpu)->cpu_index);
+            qemu_log("%s: %s: became available %p: %u\n", __func__, dm->soc, cs,
+                     cs->cpu_index);
 #endif
             /* clear the unavailability flag and resume w/ "regular" states */
             dm->unavailable_bm &= ~mask;
@@ -1500,14 +1535,12 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
         hix++;
 
 #ifdef TRACE_CPU_STATES
-        CPUState *cpu;
-        cpu = CPU(hart->cpu);
         RISCVDMStateCache current = {
             .cpu = {
-                .ix = cpu->cpu_index,
-                .halted = cpu->halted,
-                .stopped = cpu->stopped,
-                .running = cpu->running,
+                .ix = cs->cpu_index,
+                .halted = cs->halted,
+                .stopped = cs->stopped,
+                .running = cs->running,
             },
             .dm = {
                 .halted = halted,
@@ -1522,8 +1555,8 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
         if (memcmp(&current, &hart->dbgcache, sizeof(RISCVDMStateCache))) {
             qemu_log("%s: %s[%u] [H:%u S:%u R:%u] "
                      "DM [h:%u r:%u u:%u x:%u a:%u z:%u]\n",
-                     __func__, dm->soc, hart->hartid, cpu->halted, cpu->stopped,
-                     cpu->running, halted, running, unavail, nonexistent,
+                     __func__, dm->soc, hart->hartid, cs->halted, cs->stopped,
+                     cs->running, halted, running, unavail, nonexistent,
                      resumeack, havereset);
             hart->dbgcache = current;
         }
@@ -1548,10 +1581,13 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
         FIELD_DP32(val, DMSTATUS, ALLHAVERESET, (havereset == hcount ? 1 : 0));
 
     if (val != dm->regs[A_DMSTATUS]) {
-        CPUState *cpu = CPU(dm->harts[0].cpu);
-        trace_riscv_dm_dmstatus_read(dm->soc, val, halted, cpu->halted, running,
-                                     cpu->running, resumeack, cpu->stopped,
-                                     (uint32_t)dm->harts[0].cpu->env.pc);
+        /* @todo update for multiple harts */
+        RISCVCPU *cpu = dm->harts[0].cpu;
+        g_assert(cpu);
+        CPUState *cs = CPU(cpu);
+        trace_riscv_dm_dmstatus_read(dm->soc, val, halted, cs->halted, running,
+                                     cs->running, resumeack, cs->stopped,
+                                     (uint32_t)cpu->env.pc);
     }
 
     *value = dm->regs[A_DMSTATUS] = val;
@@ -2416,13 +2452,13 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel)
 static int riscv_dm_discover_cpus(RISCVDMState *dm)
 {
     unsigned hartix = 0;
-    CPUState *cpu;
+    CPUState *cs;
     /* NOLINTNEXTLINE */
-    CPU_FOREACH(cpu) {
+    CPU_FOREACH(cs) {
         /* skips CPUs/harts that are not associated to this DM */
         bool skip = true;
         for (unsigned ix = 0; ix < dm->hart_count; ix++) {
-            if (cpu->cpu_index == dm->cpu_idx[ix]) {
+            if (cs->cpu_index == dm->cpu_idx[ix]) {
                 skip = false;
                 break;
             }
@@ -2434,13 +2470,19 @@ static int riscv_dm_discover_cpus(RISCVDMState *dm)
             error_setg(&error_fatal, "Incoherent hart count");
         }
         RISCVDMHartState *hart = &dm->harts[hartix];
-        hart->cpu = RISCV_CPU(cpu);
+        RISCVCPU *cpu = RISCV_CPU(cs);
+        if (!hart->cpu) {
+            hart->cpu = cpu;
+        } else {
+            /* associated CPU should be invariant across resets */
+            g_assert(hart->cpu == cpu);
+        }
         hart->hartid = hart->cpu->env.mhartid;
-        hart->unlock_reset = !cpu->held_in_reset;
+        hart->unlock_reset = !cs->held_in_reset;
         if (!dm->as) {
             /* address space is unknown till first hart is realized */
-            dm->as = cpu->as;
-        } else if (dm->as != cpu->as) {
+            dm->as = cs->as;
+        } else if (dm->as != cs->as) {
             /* for now, all harts should share the same address space */
             error_setg(&error_fatal, "Incoherent address spaces");
         }
@@ -2450,10 +2492,93 @@ static int riscv_dm_discover_cpus(RISCVDMState *dm)
     return hartix ? 0 : -1;
 }
 
-static void riscv_dm_internal_reset(RISCVDMState *dm)
+static Property riscv_dm_properties[] = {
+    DEFINE_PROP_LINK("dtm", RISCVDMState, dtm, TYPE_RISCV_DTM, RISCVDTMState *),
+    DEFINE_PROP_ARRAY("hart", RISCVDMState, hart_count, cpu_idx,
+                      qdev_prop_uint32, uint32_t),
+    DEFINE_PROP_UINT32("dmi_addr", RISCVDMState, cfg.dmi_addr, 0),
+    DEFINE_PROP_UINT32("dmi_next", RISCVDMState, cfg.dmi_next, 0),
+    DEFINE_PROP_UINT32("nscratch", RISCVDMState, cfg.nscratch, 1u),
+    DEFINE_PROP_UINT32("progbuf_count", RISCVDMState, cfg.progbuf_count, 0),
+    DEFINE_PROP_UINT32("data_count", RISCVDMState, cfg.data_count, 2u),
+    DEFINE_PROP_UINT32("abstractcmd_count", RISCVDMState, cfg.abstractcmd_count,
+                       0),
+    DEFINE_PROP_UINT64("dm_phyaddr", RISCVDMState, cfg.dm_phyaddr, 0),
+    DEFINE_PROP_UINT64("rom_phyaddr", RISCVDMState, cfg.rom_phyaddr, 0),
+    DEFINE_PROP_UINT64("whereto_phyaddr", RISCVDMState, cfg.whereto_phyaddr, 0),
+    DEFINE_PROP_UINT64("data_phyaddr", RISCVDMState, cfg.data_phyaddr, 0),
+    DEFINE_PROP_UINT64("progbuf_phyaddr", RISCVDMState, cfg.progbuf_phyaddr, 0),
+    DEFINE_PROP_UINT16("resume_offset", RISCVDMState, cfg.resume_offset, 0),
+    DEFINE_PROP_BOOL("sysbus_access", RISCVDMState, cfg.sysbus_access, true),
+    /* beware that OpenOCD (RISC-V 2024/04) assumes this is always supported */
+    DEFINE_PROP_BOOL("abstractauto", RISCVDMState, cfg.abstractauto, true),
+    DEFINE_PROP_UINT64("mta_dm", RISCVDMState, cfg.mta_dm, RISCVDM_DEFAULT_MTA),
+    DEFINE_PROP_UINT64("mta_sba", RISCVDMState, cfg.mta_sba,
+                       RISCVDM_DEFAULT_MTA),
+    DEFINE_PROP_BOOL("enable", RISCVDMState, cfg.enable, true),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static void riscv_dm_reset_enter(Object *obj, ResetType type)
 {
+    RISCVDMClass *c = RISCV_DM_GET_CLASS(obj);
+    RISCVDMState *dm = RISCV_DM(obj);
+
+    trace_riscv_dm_reset(dm->soc, "enter");
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    g_assert(dm->dtm != NULL);
+    RISCVDTMClass *dtmc = RISCV_DTM_GET_CLASS(OBJECT(dm->dtm));
+    dm->dtm_ok =
+        (*dtmc->register_dm)(DEVICE(dm->dtm), RISCV_DEBUG_DEVICE(obj),
+                             dm->cfg.dmi_addr, DM_REG_COUNT, dm->cfg.enable);
+
+    for (unsigned ix = 0; ix < DM_REG_COUNT; ix++) {
+        if (ix == A_DMCONTROL) {
+            dm->regs[ix] = RISCVDM_DMS[ix].value & ~R_DMCONTROL_DMACTIVE_MASK;
+            continue;
+        }
+        if (ix == A_NEXTDM) {
+            continue;
+        }
+        dm->regs[ix] = RISCVDM_DMS[ix].value;
+    }
+
+    /* Hart statuses are updated on reset_exit */
+    dm->nonexistent_bm = 0;
+    dm->unavailable_bm = 0;
     dm->address = 0;
     dm->to_go_bm = 0;
+    for (unsigned ix = 0; ix < dm->hart_count; ix++) {
+        RISCVDMHartState *hart = &dm->harts[ix];
+        /*
+         * preserve CPU reference, as DM may be queried while it is maintained
+         * for current status. Hart association never changes anyway.
+         */
+        RISCVCPU *cpu = hart->cpu;
+        memset(hart, 0, sizeof(RISCVDMHartState));
+        hart->cpu = cpu;
+    }
+}
+
+static void riscv_dm_reset_exit(Object *obj, ResetType type)
+{
+    RISCVDMClass *c = RISCV_DM_GET_CLASS(obj);
+    RISCVDMState *dm = RISCV_DM(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    trace_riscv_dm_reset(dm->soc, "exit");
+
+    /* generate hart association */
+    if (riscv_dm_discover_cpus(dm)) {
+        error_setg(&error_fatal, "Cannot identify harts");
+    }
 
     riscv_dm_set_busy(dm, false);
 
@@ -2490,7 +2615,7 @@ static void riscv_dm_internal_reset(RISCVDMState *dm)
         if (cs->halted) {
             if (cs->held_in_reset) {
                 dm->unavailable_bm |= 1u << ix;
-                trace_riscv_dm_unavailable(dm->soc, true);
+                trace_riscv_dm_unavailable(dm->soc, cs->cpu_index);
                 /* a hart cannot be halted and unavailable at once */
                 hart->halted = false;
             } else {
@@ -2524,9 +2649,6 @@ static void riscv_dm_internal_reset(RISCVDMState *dm)
 
     /* TODO: should we clear progbug, absdata, ...? */
 
-    /* set dmactive once ready */
-    dm->regs[A_DMCONTROL] |= R_DMCONTROL_DMACTIVE_MASK;
-
     /* consider all harts for this DM share the same capabilities */
     CPURISCVState *env = &dm->harts[0u].cpu->env;
 
@@ -2542,59 +2664,9 @@ static void riscv_dm_internal_reset(RISCVDMState *dm)
     }
 
     dm->regs[A_SBCS] = value;
-}
 
-static Property riscv_dm_properties[] = {
-    DEFINE_PROP_LINK("dtm", RISCVDMState, dtm, TYPE_RISCV_DTM, RISCVDTMState *),
-    DEFINE_PROP_ARRAY("hart", RISCVDMState, hart_count, cpu_idx,
-                      qdev_prop_uint32, uint32_t),
-    DEFINE_PROP_UINT32("dmi_addr", RISCVDMState, cfg.dmi_addr, 0),
-    DEFINE_PROP_UINT32("dmi_next", RISCVDMState, cfg.dmi_next, 0),
-    DEFINE_PROP_UINT32("nscratch", RISCVDMState, cfg.nscratch, 1u),
-    DEFINE_PROP_UINT32("progbuf_count", RISCVDMState, cfg.progbuf_count, 0),
-    DEFINE_PROP_UINT32("data_count", RISCVDMState, cfg.data_count, 2u),
-    DEFINE_PROP_UINT32("abstractcmd_count", RISCVDMState, cfg.abstractcmd_count,
-                       0),
-    DEFINE_PROP_UINT64("dm_phyaddr", RISCVDMState, cfg.dm_phyaddr, 0),
-    DEFINE_PROP_UINT64("rom_phyaddr", RISCVDMState, cfg.rom_phyaddr, 0),
-    DEFINE_PROP_UINT64("whereto_phyaddr", RISCVDMState, cfg.whereto_phyaddr, 0),
-    DEFINE_PROP_UINT64("data_phyaddr", RISCVDMState, cfg.data_phyaddr, 0),
-    DEFINE_PROP_UINT64("progbuf_phyaddr", RISCVDMState, cfg.progbuf_phyaddr, 0),
-    DEFINE_PROP_UINT16("resume_offset", RISCVDMState, cfg.resume_offset, 0),
-    DEFINE_PROP_BOOL("sysbus_access", RISCVDMState, cfg.sysbus_access, true),
-    /* beware that OpenOCD (RISC-V 2024/04) assumes this is always supported */
-    DEFINE_PROP_BOOL("abstractauto", RISCVDMState, cfg.abstractauto, true),
-    DEFINE_PROP_UINT64("mta_dm", RISCVDMState, cfg.mta_dm, RISCVDM_DEFAULT_MTA),
-    DEFINE_PROP_UINT64("mta_sba", RISCVDMState, cfg.mta_sba,
-                       RISCVDM_DEFAULT_MTA),
-    DEFINE_PROP_BOOL("enable", RISCVDMState, cfg.enable, true),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static void riscv_dm_reset(DeviceState *dev)
-{
-    RISCVDMState *dm = RISCV_DM(dev);
-
-    g_assert(dm->dtm != NULL);
-    RISCVDTMClass *dtmc = RISCV_DTM_GET_CLASS(OBJECT(dm->dtm));
-    dm->dtm_ok =
-        (*dtmc->register_dm)(DEVICE(dm->dtm), RISCV_DEBUG_DEVICE(dev),
-                             dm->cfg.dmi_addr, DM_REG_COUNT, dm->cfg.enable);
-
-    for (unsigned ix = 0; ix < DM_REG_COUNT; ix++) {
-        if (ix != A_NEXTDM) {
-            dm->regs[ix] = RISCVDM_DMS[ix].value;
-        }
-    }
-
-    if (riscv_dm_discover_cpus(dm)) {
-        error_setg(&error_fatal, "Cannot identify harts");
-    }
-
-    dm->nonexistent_bm = 0;
-    dm->unavailable_bm = 0;
-
-    riscv_dm_internal_reset(dm);
+    /* set dmactive once ready */
+    dm->regs[A_DMCONTROL] |= R_DMCONTROL_DMACTIVE_MASK;
 }
 
 static void riscv_dm_realize(DeviceState *dev, Error **errp)
@@ -2633,10 +2705,15 @@ static void riscv_dm_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_legacy_reset(dc, &riscv_dm_reset);
     dc->realize = &riscv_dm_realize;
     device_class_set_props(dc, riscv_dm_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+    RISCVDMClass *cc = RISCV_DM_CLASS(klass);
+    resettable_class_set_parent_phases(rc, &riscv_dm_reset_enter, NULL,
+                                       &riscv_dm_reset_exit,
+                                       &cc->parent_phases);
 
     RISCVDebugDeviceClass *dmc = RISCV_DEBUG_DEVICE_CLASS(klass);
     dmc->write_rq = &riscv_dm_write_rq;
@@ -2657,6 +2734,7 @@ static const TypeInfo riscv_dm_info = {
     .name = TYPE_RISCV_DM,
     .parent = TYPE_RISCV_DEBUG_DEVICE,
     .instance_size = sizeof(RISCVDMState),
+    .class_size = sizeof(RISCVDMClass),
     .class_init = &riscv_dm_class_init,
 };
 
