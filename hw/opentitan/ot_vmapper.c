@@ -229,7 +229,7 @@ static void g_tree_remove_all(GTree *tree)
 }
 #endif /* >= 2.68 < 2.70 */
 
-static void ot_vmapper_flush_tree(OtVMapperState *s, GTree *tree)
+static void ot_vmapper_flush_tree(OtVMapperState *s, bool insn)
 {
 #if (GLIB_MINOR_VERSION < 68)
 #ifdef SHOW_RANGE_TREE
@@ -239,20 +239,18 @@ static void ot_vmapper_flush_tree(OtVMapperState *s, GTree *tree)
     /*
      * GTreeNode is only available from 2.68
      * destroy the whole tree and build a new one
-     * this is ulgy, but should not be used except on outdated hosts
+     * this is ugly, but should not be used except on outdated hosts
      */
-    if (tree == s->itree) {
+    if (insn) {
         g_tree_destroy(s->itree);
         s->itree = ot_vmapper_create_tree(s);
-    } else if (tree == s->dtree) {
+    } else {
         g_tree_destroy(s->dtree);
         s->dtree = ot_vmapper_create_tree(s);
-    } else {
-        g_assert_not_reached();
     }
 #else /* >= 2.68 */
     (void)s;
-    g_tree_remove_all(tree);
+    g_tree_remove_all(insn ? s->itree : s->dtree);
 #endif /* >= 2.68 */
 }
 
@@ -771,13 +769,14 @@ static GList *ot_vmapper_fuse(OtVMapperState *s, GList *rglist)
     return rglist;
 }
 
-static void ot_vmapper_rebuild_tree(OtVMapperState *s, GTree *tree,
-                                    GList *rglist)
+static void ot_vmapper_rebuild_tree(OtVMapperState *s, bool insn, GList *rglist)
 {
     const GList *current = rglist;
 
     /* empty the tree AND free any contained OtRegionRange items */
-    ot_vmapper_flush_tree(s, tree);
+    ot_vmapper_flush_tree(s, insn);
+
+    GTree *tree = insn ? s->itree : s->dtree;
 
     /* configure the tree comparison for insertion */
     s->insert_mode = true;
@@ -805,7 +804,6 @@ static void ot_vmapper_rebuild_tree(OtVMapperState *s, GTree *tree,
 static void ot_vmapper_update(OtVMapperState *s, bool insn)
 {
     GList *rglist = NULL;
-    GTree *rgtree = insn ? s->itree : s->dtree;
     OtRegionRange *ranges = insn ? s->iranges : s->dranges;
     unsigned range_count = s->trans_count + (insn ? s->noexec_count : 0);
 
@@ -867,7 +865,7 @@ static void ot_vmapper_update(OtVMapperState *s, bool insn)
     }
 
     /* rglist is freed on return */
-    ot_vmapper_rebuild_tree(s, rgtree, rglist);
+    ot_vmapper_rebuild_tree(s, insn, rglist);
 
     s->lranges[insn] = NULL;
 
