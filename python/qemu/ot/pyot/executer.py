@@ -67,8 +67,10 @@ class QEMUExecuter:
         'A': 'in_asm',
         'E': 'exec',
         'G': 'guest_errors',
+        'H': 'help',
         'I': 'int',
         'M': 'mmu',
+        'R': 'cpu_reset',
         'U': 'unimp',
     }
     """Shortcut names for QEMU log sources."""
