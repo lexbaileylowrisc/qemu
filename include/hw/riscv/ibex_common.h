@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Helpers for LowRISC Ibex Demo System & OpenTitan EarlGrey
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -558,6 +558,18 @@ enum {
  * @regbm is a bitmap of registers to be dumped [x1..t6], pc replace x0
  */
 void ibex_log_vcpu_registers(uint64_t regbm);
+
+/* ------------------------------------------------------------------------ */
+/* Miscellaneous utilities */
+/* ------------------------------------------------------------------------ */
+
+/*
+ * Find a host function name by its address.
+ *
+ * @fn the address of the function
+ * @return the function name, or NULL if not found or not supported
+ */
+const char *ibex_common_get_func_name_by_addr(void *fn);
 
 /* ------------------------------------------------------------------------ */
 /* CharDev utilities */

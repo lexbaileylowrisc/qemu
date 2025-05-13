@@ -1,7 +1,7 @@
 /*
  * QEMU RISC-V Helpers for LowRISC Ibex Demo System & OpenTitan EarlGrey
  *
- * Copyright (c) 2022-2024 Rivos, Inc.
+ * Copyright (c) 2022-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -21,6 +21,9 @@
  */
 
 #include "qemu/osdep.h"
+#ifdef CONFIG_POSIX
+#include <dlfcn.h>
+#endif
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
@@ -728,6 +731,18 @@ uint32_t ibex_load_kernel(CPUState *cpu)
     }
 
     return (uint32_t)kernel_entry;
+}
+
+const char *ibex_common_get_func_name_by_addr(void *fn)
+{
+#ifdef CONFIG_POSIX
+    Dl_info info;
+    if (dladdr(fn, &info)) {
+        return info.dli_sname;
+    }
+#endif
+
+    return NULL;
 }
 
 uint32_t ibex_get_current_pc(void)
