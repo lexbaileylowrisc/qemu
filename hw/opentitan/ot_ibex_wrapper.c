@@ -887,6 +887,11 @@ static void ot_ibex_wrapper_cpu_enable_recv(void *opaque, int n, int level)
 
     g_assert((unsigned)n < OT_IBEX_CPU_EN_COUNT);
 
+    bool override = s->lc_ignore && (n == OT_IBEX_LC_CTRL_CPU_EN) && !level;
+    if (override) {
+        level = 1;
+    }
+
     if (level) {
         s->cpu_en_bm |= 1u << (unsigned)n;
     } else {
@@ -897,7 +902,10 @@ static void ot_ibex_wrapper_cpu_enable_recv(void *opaque, int n, int level)
      * "Fetch is only enabled when local fetch enable, lifecycle CPU enable and
      *  power manager CPU enable are all enabled."
      */
-    trace_ot_ibex_wrapper_cpu_enable(s->ot_id ?: "", n ? "PWR" : "LC",
+    trace_ot_ibex_wrapper_cpu_enable(s->ot_id ?: "",
+                                     n == OT_IBEX_LC_CTRL_CPU_EN ?
+                                         (override ? "LC-override" : "LC") :
+                                         "PWR",
                                      (bool)level);
 
     ot_ibex_wrapper_update_exec(s);
