@@ -862,7 +862,10 @@ static void ot_ibex_wrapper_update_exec(OtIbexWrapperState *s)
         ((s->cpu_en_bm & OT_IBEX_CPU_EN_MASK) == OT_IBEX_CPU_EN_MASK) &&
         !s->esc_rx;
     trace_ot_ibex_wrapper_update_exec(s->ot_id ?: "", s->cpu_en_bm, s->esc_rx,
+                                      s->cpu->halted, s->cpu->held_in_reset,
                                       enable);
+
+    g_assert(s->cpu);
 
     if (enable) {
         s->cpu->halted = 0;
