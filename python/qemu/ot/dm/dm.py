@@ -255,7 +255,8 @@ class DebugModule:
                 break
             sleep(0.001)
         else:
-            self._log.error('Status %s', status)
+            status = ', '.join((f'{k}: {v}' for k, v in status.items()))
+            self._log.error('Status: %s', status)
             raise TimeoutError(f'Cannot halt hart {self._hart}')
 
     def resume(self, hart: int = 0) -> None:
