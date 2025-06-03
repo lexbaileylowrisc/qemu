@@ -932,14 +932,14 @@ static void riscv_dm_set_cs(RISCVDMState *dm, bool enable)
     trace_riscv_dm_cs(dm->soc, enable);
 }
 
-static uint32_t risc_dmi_get_debug_cause(RISCVCPU *cpu)
+static uint32_t riscv_dmi_get_debug_cause(RISCVCPU *cpu)
 {
     return FIELD_EX32(cpu->env.dcsr, DCSR, CAUSE);
 }
 
-static const char *risc_dmi_get_debug_cause_name(RISCVCPU *cpu)
+static const char *riscv_dmi_get_debug_cause_name(RISCVCPU *cpu)
 {
-    return DCSR_CAUSE_NAMES[risc_dmi_get_debug_cause(cpu)];
+    return DCSR_CAUSE_NAMES[riscv_dmi_get_debug_cause(cpu)];
 }
 
 static void riscv_dm_acknowledge(void *opaque, int irq, int level)
@@ -971,7 +971,7 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
             riscv_dm_set_busy(dm, false);
             trace_riscv_dm_halted(dm->soc, hart - &dm->harts[0],
                                   hart->cpu->env.dpc,
-                                  risc_dmi_get_debug_cause_name(hart->cpu));
+                                  riscv_dmi_get_debug_cause_name(hart->cpu));
         }
         break;
     case ACK_GOING:
@@ -2443,7 +2443,7 @@ static void riscv_dm_resume_hart(RISCVDMState *dm, unsigned hartsel)
     cpu_exit(cs);
     cpu_reset_interrupt(cs, CPU_INTERRUPT_DEBUG);
 
-    const char *cause = risc_dmi_get_debug_cause_name(cpu);
+    const char *cause = riscv_dmi_get_debug_cause_name(cpu);
     trace_riscv_dm_resume_hart(dm->soc, sstep, cause);
 
     riscv_dm_ensure_running(dm);
@@ -2633,18 +2633,18 @@ static void riscv_dm_reset_exit(Object *obj, ResetType type)
          */
         if (is_running) {
             /* called from vm_state change, running */
-            if (risc_dmi_get_debug_cause(cpu) == DCSR_CAUSE_RESETHALTREQ) {
+            if (riscv_dmi_get_debug_cause(cpu) == DCSR_CAUSE_RESETHALTREQ) {
                 env->dcsr = FIELD_DP32(env->dcsr, DCSR, CAUSE, DCSR_CAUSE_NONE);
             }
         } else {
             /* called from DMI reset */
-            if (risc_dmi_get_debug_cause(cpu) == DCSR_CAUSE_NONE) {
+            if (riscv_dmi_get_debug_cause(cpu) == DCSR_CAUSE_NONE) {
                 env->dcsr =
                     FIELD_DP32(env->dcsr, DCSR, CAUSE, DCSR_CAUSE_RESETHALTREQ);
             }
         }
 
-        xtrace_riscv_dm_info(dm->soc, "cause", risc_dmi_get_debug_cause(cpu));
+        xtrace_riscv_dm_info(dm->soc, "cause", riscv_dmi_get_debug_cause(cpu));
     }
 
     /* TODO: should we clear progbug, absdata, ...? */
