@@ -1321,13 +1321,23 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
         }
     }
 
+
+    RISCVDMCmdErr ret = CMD_ERR_NONE;
+
     if (unlikely(value & R_DMCONTROL_NDMRESET_MASK)) {
         /* full system reset (but the Debug Module) */
         qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
     } else if (dm->hart) {
-        if (hartsel < dm->hart_count) {
+        if (!hasel && (hartsel < dm->hart_count)) {
+            uint64_t hartbit = 1u << hartsel;
             if (value & R_DMCONTROL_HALTREQ_MASK) {
-                riscv_dm_halt_hart(dm, hartsel);
+                if (dm->unavailable_bm & hartbit) {
+                    trace_riscv_dm_unavailable_hart_control(dm->soc, hartsel,
+                                                            "halt");
+                    ret = CMD_ERR_HALT_RESUME;
+                } else {
+                    riscv_dm_halt_hart(dm, hartsel);
+                }
             } else {
                 if (dm->hart->halted) {
                     /*
@@ -1335,9 +1345,18 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
                      * specs
                      */
                     if (value & R_DMCONTROL_RESUMEREQ_MASK) {
-                        /* it also clears the resume ack bit for those harts. */
-                        dm->hart->resumed = false;
-                        riscv_dm_resume_hart(dm, hartsel);
+                        if (dm->unavailable_bm & hartbit) {
+                            trace_riscv_dm_unavailable_hart_control(dm->soc,
+                                                                    hartsel,
+                                                                    "resume");
+                            ret = CMD_ERR_HALT_RESUME;
+                        } else {
+                            /*
+                             * it also clears the resume ack bit for those harts
+                             */
+                            dm->hart->resumed = false;
+                            riscv_dm_resume_hart(dm, hartsel);
+                        }
                     }
                 }
             }
@@ -1353,7 +1372,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
     /* HARTSELHI never used, since HARTSELLO already encodes up to 1K harts */
     dm->regs[A_DMCONTROL] = FIELD_DP32(value, DMCONTROL, HARTSELLO, hartsel);
 
-    return CMD_ERR_NONE;
+    return ret;
 }
 
 static CmdErr riscv_dm_exec_command(RISCVDMState *dm, uint32_t value)

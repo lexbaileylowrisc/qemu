@@ -42,7 +42,8 @@ riscv_dm_sbdata_read(const char *soc, unsigned slot, uint32_t data) "%s: @[%u] 0
 riscv_dm_sbdata_write(const char *soc, unsigned slot, uint32_t data) "%s: @[%u] 0x%08x"
 riscv_dm_sysbus_data_read(const char *soc, uint64_t address, unsigned size, uint64_t val64, unsigned res) "%s: 0x%08" PRIx64 "[+%u] <- %08" PRIx64 ": res %u"
 riscv_dm_sysbus_data_write(const char *soc, uint64_t address, unsigned size, uint64_t val64, unsigned res) "%s: 0x%08" PRIx64 "[+%u] -> %08" PRIx64 ": res %u"
-riscv_dm_unavailable(const char *soc, int cpuid) "%s (#%d)"
+riscv_dm_unavailable(const char *soc, int cpuid) "%s {%d}"
+riscv_dm_unavailable_hart_control(const char *soc, unsigned hartsel, const char *action) "%s: #%u cannot %s as unavailable"
 
 # dtm.c
 
