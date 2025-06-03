@@ -236,10 +236,15 @@ static const char *SOCDBG_NAMES[] = {
 
 #define STATE_NAME_ENTRY(_st_) [ST_##_st_] = stringify(_st_)
 static const char *STATE_NAMES[] = {
-    STATE_NAME_ENTRY(IDLE),          STATE_NAME_ENTRY(CHECK_LC_ST),
-    STATE_NAME_ENTRY(WAIT4_DFT_EN),  STATE_NAME_ENTRY(CHECK_HALT_PIN),
-    STATE_NAME_ENTRY(CHECK_JTAG_GO), STATE_NAME_ENTRY(CONTINUE_BOOT),
+    /* clang-format off */
+    STATE_NAME_ENTRY(IDLE),
+    STATE_NAME_ENTRY(CHECK_LC_ST),
+    STATE_NAME_ENTRY(WAIT4_DFT_EN),
+    STATE_NAME_ENTRY(CHECK_HALT_PIN),
+    STATE_NAME_ENTRY(CHECK_JTAG_GO),
+    STATE_NAME_ENTRY(CONTINUE_BOOT),
     STATE_NAME_ENTRY(HALT_DONE),
+    /* clang-format on */
 };
 #undef STATE_NAME_ENTRY
 #define STATE_NAME(_st_) \
@@ -377,7 +382,9 @@ static void ot_socdbg_ctrl_update(OtSoCDbgCtrlState *s)
 
     int prev_policy = ibex_irq_get_level(&s->policy);
     if (prev_policy != policy) {
-        trace_ot_socdbg_ctrl_update(s->ot_id, s->debug_policy, s->debug_valid);
+        trace_ot_socdbg_ctrl_update(s->ot_id, SOCDBG_NAME(socdbg_state),
+                                    STATE_NAME(s->fsm_state), s->debug_policy,
+                                    s->debug_valid);
     }
     ibex_irq_set(&s->policy, policy);
 }

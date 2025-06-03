@@ -443,7 +443,7 @@ ot_socdbg_ctrl_rcv(const char *id, const char *src, unsigned n, int level) "%s: 
 ot_socdbg_ctrl_schedule_fsm(const char *id, const char *func, int line, unsigned tc) "%s: @ %s:%d (%u)"
 ot_socdbg_ctrl_socdbg_state(const char *id, const char *st) "%s: %s"
 ot_socdbg_ctrl_tick_fsm(const char *id, const char *st, uint32_t bs, uint32_t lc, uint32_t dbg, bool dfti, bool bc) "%s: %s bs:0x%03x lc:0x%02x dbg:0x%01x dfti:%u bc:%u"
-ot_socdbg_ctrl_update(const char *id, unsigned policy, bool valid) "%s: debug policy:0x%1x valid:%u"
+ot_socdbg_ctrl_update(const char *id, const char *socdbgst, const char *fsmst, unsigned policy, bool valid) "%s: [%s] fsm:%s policy:0x%1x valid:%u"
 
 
 # ot_spi_device.c
