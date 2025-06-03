@@ -6,8 +6,9 @@ Module to access the Ibex core.
 ## Usage
 
 ````text
-usage: dtm.py [-h] [-S SOCKET] [-t] [-l IR_LENGTH] [-b BASE] [-I] [-c CSR]
-              [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}]
+usage: dtm.py [-h] [-S SOCKET] [-t] [-w DELAY] [-l IR_LENGTH]
+              [--idcode IDCODE] [--dtmcs DTMCS] [--dmi DMI] [-b BASE] [-I]
+              [-c CSR] [-C CSR_CHECK] [-x] [-X] [-a ADDRESS] [-m {read,write}]
               [-s SIZE] [-f FILE] [-D DATA] [-e ELF] [-F] [-v] [-d]
 
 Debug Transport Module tiny demo
@@ -16,13 +17,16 @@ options:
   -h, --help            show this help message and exit
 
 Virtual machine:
-  -S, --socket SOCKET   unix:path/to/socket or tcp:host:port (default
-                        tcp:localhost:3335)
+  -S, --socket SOCKET   connection (default tcp:localhost:3335)
   -t, --terminate       terminate QEMU when done
+  -w, --idle DELAY      stay idle before interacting with DTM
 
 DMI:
   -l, --ir-length IR_LENGTH
                         bit length of the IR register (default: 5)
+  --idcode IDCODE       define the ID code (default: 1)
+  --dtmcs DTMCS         define an alternative DTMCS register (default: 0x10)
+  --dmi DMI             define an alternative DMI register (default: 0x11)
   -b, --base BASE       define DMI base address (default: 0x0)
 
 Info:
@@ -107,6 +111,9 @@ Extras:
 
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
+* `-w` pause execution on start up before communication with the remote DTM. This enables QEMU VM
+  to initialize and boot the guest SW before attempting a communication.
+
 * `-X` do not attempt to resume normal execution of the hart once DTM operation have been completed.
   This can be useful for example when the QEMU VM is started with `-S` and no application code has
   been loaded in memory: once the DTM operations are completed, the default behavior is to resume
@@ -116,6 +123,12 @@ Extras:
 
 * `-x` execute the loaded ELF application from its entry point. Requires the `--elf` option.
   Application is executed even with `-X` defined.
+
+* `--idcode` specify an alternate IDCODE value
+
+* `--dmi` specify an alternate address for the DMI register
+
+* `--dtmcs` specify an alternate address for the DTMCS register
 
 ### Examples
 

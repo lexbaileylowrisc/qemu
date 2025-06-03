@@ -14,6 +14,7 @@ from io import BytesIO
 from os import linesep
 from os.path import dirname, join as joinpath, normpath
 from socket import create_connection, socket, AF_UNIX, SOCK_STREAM
+from time import sleep
 from traceback import format_exc
 from typing import Optional
 import sys
@@ -74,6 +75,8 @@ def main():
                          help=f'connection (default {default_socket})')
         qvm.add_argument('-t', '--terminate', action='store_true',
                          help='terminate QEMU when done')
+        qvm.add_argument('-w', '--idle', type=float, metavar='DELAY',
+                         help='stay idle before interacting with DTM')
         dmi = argparser.add_argument_group(title='DMI')
         dmi.add_argument('-l', '--ir-length', type=int,
                          default=DEFAULT_IR_LENGTH,
@@ -153,8 +156,8 @@ def main():
             raise RuntimeError(f'Cannot connect to {args.socket}: '
                                f'{exc}') from exc
 
-        configure_loggers(args.verbose, *main_loggers, -1, 'jtag',
-            funcname=True, name_width=20)
+        log = configure_loggers(args.verbose, *main_loggers, -1, 'jtag',
+                                funcname=True, name_width=20)[0]
 
         if sock:
             sock.settimeout(0.1)
@@ -174,6 +177,11 @@ def main():
             DMI.ADDRESS = args.dmi
         dtm = DebugTransportModule(eng, ir_length)
         rvdm = None
+
+        if args.idle:
+            log.info('Idling for %.1f seconds', args.idle)
+            sleep(args.idle)
+
         try:
             if args.info:
                 code = idcode(eng, args.idcode, ir_length)
