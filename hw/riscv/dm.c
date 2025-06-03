@@ -963,8 +963,8 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
             hart->halted = true;
             uint64_t hbm = 1u << hartnum;
             if (dm->unavailable_bm & hbm) {
-                qemu_log("%s: ERROR, an unavailable hart should not be halted",
-                         __func__);
+                qemu_log("%s: %s: an unavailable hart should not be halted\n",
+                         __func__, dm->soc);
                 /* ensure hart can only be a single state */
                 dm->unavailable_bm &= ~hbm;
             }
@@ -1014,8 +1014,8 @@ static void riscv_dm_acknowledge(void *opaque, int irq, int level)
             hart->resumed = true;
             uint64_t hbm = 1u << hartnum;
             if (dm->unavailable_bm & hbm) {
-                qemu_log("%s: ERROR, an unavailable hart should not be resumed",
-                         __func__);
+                qemu_log("%s: %s: an unavailable hart should not be resumed\n",
+                         __func__, dm->soc);
                 /* ensure hart can only be a single state */
                 dm->unavailable_bm &= ~hbm;
             }
@@ -1252,7 +1252,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
 
     dm->hart = NULL;
 
-    /* hart array not supported */
+    /* hart array not supported, ignore any request that uses it */
     if (!hasel) {
         uint64_t hbit = 1u << hartsel;
         if (!(hartsel < dm->hart_count)) {
@@ -1268,8 +1268,8 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
 
             if (value & R_DMCONTROL_HARTRESET_MASK) {
                 if (!cs->held_in_reset) {
-                    trace_riscv_dm_hart_reset("assert", dm->soc, cs->cpu_index,
-                                              dm->hart->hartid);
+                    trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
+                                              dm->hart->hartid, "assert");
                     if (hart->unlock_reset) {
                         /*
                          * if hart is started in active reset, prevent from
@@ -1293,9 +1293,8 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
                          * initial out-of-reset sequence. Not sure how real HW
                          * manages this corner case.
                          */
-                        trace_riscv_dm_hart_reset("release", dm->soc,
-                                                  cs->cpu_index,
-                                                  dm->hart->hartid);
+                        trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
+                                                  dm->hart->hartid, "release");
                         resettable_release_reset(OBJECT(cs), RESET_TYPE_COLD);
                     }
                 }
@@ -1307,8 +1306,8 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
                     dm->unavailable_bm &= ~hbit;
                     hart->have_reset = true;
                     hart->halted = false;
-                    trace_riscv_dm_hart_reset("exited", dm->soc, cs->cpu_index,
-                                              dm->hart->hartid);
+                    trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
+                                              dm->hart->hartid, "exited");
                 }
             }
         }
@@ -1553,11 +1552,11 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
         };
         /* NOLINTNEXTLINE */
         if (memcmp(&current, &hart->dbgcache, sizeof(RISCVDMStateCache))) {
-            qemu_log("%s: %s[%u] [H:%u S:%u R:%u] "
+            qemu_log("%s: %s [%u/%u] [H:%u S:%u R:%u] "
                      "DM [h:%u r:%u u:%u x:%u a:%u z:%u]\n",
-                     __func__, dm->soc, hart->hartid, cs->halted, cs->stopped,
-                     cs->running, halted, running, unavail, nonexistent,
-                     resumeack, havereset);
+                     __func__, dm->soc, hart->hartid, hcount, cs->halted,
+                     cs->stopped, cs->running, halted, running, unavail,
+                     nonexistent, resumeack, havereset);
             hart->dbgcache = current;
         }
 #endif /* #ifdef TRACE_CPU_STATES */
@@ -1585,9 +1584,9 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
         RISCVCPU *cpu = dm->harts[0].cpu;
         g_assert(cpu);
         CPUState *cs = CPU(cpu);
-        trace_riscv_dm_dmstatus_read(dm->soc, val, halted, cs->halted, running,
-                                     cs->running, resumeack, cs->stopped,
-                                     (uint32_t)cpu->env.pc);
+        trace_riscv_dm_dmstatus_read(dm->soc, val, unavail, halted, cs->halted,
+                                     running, cs->running, resumeack,
+                                     cs->stopped, (uint32_t)cpu->env.pc);
     }
 
     *value = dm->regs[A_DMSTATUS] = val;
