@@ -187,7 +187,7 @@ static const char *REG_NAMES[REGS_COUNT] = {
 
 #define NUM_LC_STATE            (LC_STATE_VALID_COUNT)
 #define NUM_LC_TRANSITION_COUNT 25u
-#define NUM_OWNERSHIP           8u
+#define NUM_OWNERSHIP           9u
 #define NUM_SOCDBG              3u
 
 #define LC_TRANSITION_COUNT_WORDS 24u
@@ -417,9 +417,17 @@ struct OtLcCtrlClass {
     ResettablePhases parent_phases;
 };
 
+/* try to cope with the many ways to encode a transition matrix */
+typedef enum {
+    LC_TR_MODE_HISTORICAL, /* what prevailed in EarlGrey */
+    LC_TR_MODE_FIRST_FULL, /* first non-ZRO transition contains full first st */
+    LC_TR_MODE_FULL_CHANGE, /* no identifical words in transititions */
+} OtLcCtrlTransitionMode;
+
 typedef struct {
     unsigned word_count; /* sequence size (count of 16-bit words) */
     unsigned step_count; /* how many different steps/stages, incl. raw/blank */
+    OtLcCtrlTransitionMode mode; /* how transition matrix is "encoded" */
     const char *name; /* helper name */
 } OtLcCtrlTransitionDesc;
 
@@ -521,21 +529,25 @@ static const OtLcCtrlTransitionDesc TRANSITION_DESC[LC_CTRL_TRANS_COUNT] = {
     [LC_CTRL_TRANS_LC_STATE] = {
         .word_count = LC_STATE_WORDS,
         .step_count = NUM_LC_STATE,
+        .mode = LC_TR_MODE_HISTORICAL,
         .name = "lc_state",
     },
     [LC_CTRL_TRANS_LC_TCOUNT] = {
         .word_count = LC_TRANSITION_COUNT_WORDS,
         .step_count = NUM_LC_TRANSITION_COUNT,
+        .mode = LC_TR_MODE_HISTORICAL,
         .name = "lc_tcount",
     },
     [LC_CTRL_TRANS_OWNERSHIP] = {
         .word_count = OWNERSHIP_WORDS,
         .step_count = NUM_OWNERSHIP,
+        .mode = LC_TR_MODE_FIRST_FULL,
         .name = "ownership",
     },
     [LC_CTRL_TRANS_SOCDBG] = {
         .word_count = SOCDBG_WORDS,
         .step_count = NUM_SOCDBG,
+        .mode = LC_TR_MODE_FULL_CHANGE,
         .name = "socdbg",
     },
 };
@@ -1215,9 +1227,18 @@ static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
     /* default to lowest capabilities */
     int socdbg_ix = OT_SOCDBG_ST_PROD;
 
+    TRACE_LC_CTRL("soc_dbg_state: %s",
+                  ot_lc_ctrl_hexdump(hw_cfg->soc_dbg_state,
+                                     sizeof(OtLcCtrlSocDbgValue)));
+
     for (unsigned six = 0; six < OT_SOCDBG_ST_COUNT; six++) {
-        if (!memcmp(hw_cfg->soc_dbg_state, s->socdbgs[six],
-                    sizeof(OtLcCtrlSocDbgValue))) {
+        bool match = !memcmp(hw_cfg->soc_dbg_state, s->socdbgs[six],
+                             sizeof(OtLcCtrlSocDbgValue));
+        TRACE_LC_CTRL("soc_dbg ref[%u]: %s, match: %u", six,
+                      ot_lc_ctrl_hexdump(s->socdbgs[six],
+                                         sizeof(OtLcCtrlSocDbgValue)),
+                      match);
+        if (match) {
             socdbg_ix = (int)six;
             break;
         }
@@ -2033,12 +2054,37 @@ static void ot_lc_ctrl_configure_transitions(
     uint16_t *lcval = table;
     memset(lcval, 0, tdesc->word_count * sizeof(uint16_t)); /* RAW stage */
     lcval += tdesc->word_count;
-    for (unsigned tix = 1; tix < tdesc->step_count;
-         tix++, lcval += tdesc->word_count) {
-        memcpy(&lcval[0], &last[0], tix * sizeof(uint16_t));
-        memcpy(&lcval[tix], &first[tix],
-               (tdesc->word_count - tix) * sizeof(uint16_t));
+
+    if (tdesc->mode != LC_TR_MODE_HISTORICAL) {
+        memcpy(lcval, first, tdesc->word_count * sizeof(uint16_t));
+        lcval += tdesc->word_count;
     }
+
+    if (tdesc->mode != LC_TR_MODE_FULL_CHANGE) {
+        unsigned step_count = tdesc->step_count -
+                              (tdesc->mode == LC_TR_MODE_FIRST_FULL ? 1u : 0u);
+        for (unsigned tix = 1u; tix < step_count; tix++) {
+            memcpy(&lcval[0], &last[0], tix * sizeof(uint16_t));
+            memcpy(&lcval[tix], &first[tix],
+                   (tdesc->word_count - tix) * sizeof(uint16_t));
+            lcval += tdesc->word_count;
+        }
+    } else {
+        g_assert(tdesc->step_count == 3u);
+        memcpy(lcval, last, tdesc->word_count * sizeof(uint16_t));
+    }
+
+#ifdef OT_LC_CTRL_DEBUG
+    /* dump the generated transition tables */
+    lcval = table;
+    for (unsigned tix = 0; tix < tdesc->step_count; tix++) {
+        qemu_log("%s: %s[%2u]", __func__, tdesc->name, tix);
+        for (unsigned wix = 0; wix < tdesc->word_count; wix++) {
+            qemu_log(" %04hx", *lcval++);
+        };
+        qemu_log("\n");
+    }
+#endif
 
     g_free(last);
     g_free(first);
