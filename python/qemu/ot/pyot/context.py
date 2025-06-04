@@ -13,6 +13,8 @@ from subprocess import Popen, PIPE, TimeoutExpired
 from threading import Event
 from typing import Optional
 
+import re
+
 from .filemgr import QEMUFileManager
 from .worker import QEMUContextWorker
 
@@ -68,12 +70,16 @@ class QEMUContext:
         if ctx:
             for cmd in ctx:
                 bkgnd = ctx_name == 'with'
-                if cmd.endswith('!'):
-                    bkgnd = False
-                    cmd = cmd[:-1]
-                elif cmd.endswith('&'):
-                    bkgnd = True
-                    cmd = cmd[:-1]
+                timeout = 5
+                optmo = re.match(r'^(.*)(?:(&)|(!)(?:@(\d+))?)$', cmd)
+                if optmo:
+                    cmd = optmo.group(1)
+                    if optmo.group(2):
+                        bkgnd = True
+                    elif optmo.group(3):
+                        bkgnd = False
+                        if optmo.group(4):
+                            timeout = int(optmo.group(4))
                 cmd = normpath(cmd.rstrip())
                 if bkgnd:
                     if ctx_name == 'post':
@@ -107,7 +113,7 @@ class QEMUContext:
                                  errors='ignore', text=True)
                     ret = 0
                     try:
-                        outs, errs = proc.communicate(timeout=5)
+                        outs, errs = proc.communicate(timeout=timeout)
                         ret = proc.returncode
                     except TimeoutExpired:
                         proc.kill()

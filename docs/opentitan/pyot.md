@@ -500,7 +500,10 @@ background commands.
 To change the default execution style for a command, add a suffix to the command definition:
 
 1. append a `&` character to select background execution, useful with `pre` commands
-2. append a `!` character to select synchronous execution, useful with `with` commands
+2. append a `!` character to select synchronous execution, useful with `with` commands; it is
+   possible to append `@T` with `T` is defined as an integral value, _e.g._ the `sleep 5!@6`
+   statement executes the sleep command which waits for 5 seconds. This command does not time out
+   since its timeout is set to 6 seconds.
 
 #### Temporary directories
 
