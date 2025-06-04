@@ -963,7 +963,7 @@ ot_ibex_wrapper_read_rnd_data(OtIbexWrapperState *s, unsigned reg)
 
     ot_ibex_wrapper_request_entropy(s);
 
-    return *s->access_regs[reg];
+    return value;
 }
 
 static uint32_t
