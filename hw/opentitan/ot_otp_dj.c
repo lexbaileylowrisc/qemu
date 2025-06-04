@@ -3150,6 +3150,8 @@ static void ot_otp_dj_generate_otp_sram_key(OtOTPDjState *s, OtOTPKey *key)
     key->seed_valid = valid;
     key->seed_size = SRAM_KEY_BYTES;
 
+    trace_ot_otp_sram_key_generated(s->ot_id);
+
     /* some entropy bits have been used, refill the buffer */
     qemu_bh_schedule(s->keygen->entropy_bh);
 }
@@ -3181,6 +3183,8 @@ static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
 
     unsigned avail_entropy = ot_fifo32_num_used(&ds->keygen->entropy_buf);
     unsigned need_entropy;
+
+    trace_ot_otp_get_otp_key(ds->ot_id, type);
 
     switch (type) {
     case OTP_KEY_FLASH_DATA:
