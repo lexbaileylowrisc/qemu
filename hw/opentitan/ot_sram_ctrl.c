@@ -30,9 +30,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/error-report.h"
 #include "qemu/log.h"
-#include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
 #include "hw/opentitan/ot_alert.h"
@@ -121,7 +119,6 @@ struct OtSramCtrlState {
     MemoryRegion mmio; /* SRAM controller registers */
     OtSramCtrlMem *mem; /* SRAM memory */
     IbexIRQ alert;
-    QEMUBH *switch_mr_bh; /* switch memory region */
     QEMUTimer *init_timer; /* SRAM initialization timer */
 
     uint64_t *init_sram_bm; /* initialization bitmap */
@@ -192,6 +189,18 @@ static inline size_t ot_sram_ctrl_get_slot_count(size_t wsize)
     return ot_sram_ctrl_get_u64_slot(wsize);
 }
 
+static void ot_sram_ctrl_mem_switch_to_ram(OtSramCtrlState *s)
+{
+    memory_region_transaction_begin();
+    memory_region_set_enabled(&s->mem->init, false);
+    memory_region_set_enabled(&s->mem->sram, true);
+    s->mem->alias.alias = &s->mem->sram;
+    memory_region_transaction_commit();
+    memory_region_set_dirty(&s->mem->sram, 0, s->size);
+
+    trace_ot_sram_ctrl_switch_mem(s->ot_id, "ram");
+}
+
 static bool ot_sram_ctrl_mem_is_fully_initialized(const OtSramCtrlState *s)
 {
     for (unsigned ix = 0; ix < s->init_slot_count; ix++) {
@@ -244,7 +253,7 @@ static bool ot_sram_ctrl_initialize(OtSramCtrlState *s, unsigned count,
         if (!s->noswitch) {
             /* switch memory to SRAM */
             trace_ot_sram_ctrl_initialization_complete(s->ot_id, "ctrl");
-            qemu_bh_schedule(s->switch_mr_bh);
+            ot_sram_ctrl_mem_switch_to_ram(s);
         } else {
             trace_ot_sram_ctrl_initialization_complete(s->ot_id,
                                                        "ctrl/noswitch");
@@ -516,20 +525,6 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static void ot_sram_ctrl_mem_switch_to_ram_fn(void *opaque)
-{
-    OtSramCtrlState *s = opaque;
-
-    memory_region_transaction_begin();
-    memory_region_set_enabled(&s->mem->init, false);
-    memory_region_set_enabled(&s->mem->sram, true);
-    s->mem->alias.alias = &s->mem->sram;
-    memory_region_transaction_commit();
-    memory_region_set_dirty(&s->mem->sram, 0, s->size);
-
-    trace_ot_sram_ctrl_switch_mem(s->ot_id, "ram");
-}
-
 static void ot_sram_ctrl_init_chunk_fn(void *opaque)
 {
     OtSramCtrlState *s = opaque;
@@ -668,7 +663,7 @@ static MemTxResult ot_sram_ctrl_mem_init_write_with_attrs(
                     trace_ot_sram_ctrl_initialization_complete(s->ot_id,
                                                                "write");
 
-                    qemu_bh_schedule(s->switch_mr_bh);
+                    ot_sram_ctrl_mem_switch_to_ram(s);
                 } else {
                     if (!s->initialized) {
                         trace_ot_sram_ctrl_initialization_complete(
@@ -723,7 +718,6 @@ static void ot_sram_ctrl_reset_enter(Object *obj, ResetType type)
     }
 
     timer_del(s->init_timer);
-    qemu_bh_cancel(s->switch_mr_bh);
 
     memset(s->regs, 0, REGS_SIZE);
 
@@ -867,7 +861,6 @@ static void ot_sram_ctrl_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
     s->mem = g_new0(OtSramCtrlMem, 1u);
-    s->switch_mr_bh = qemu_bh_new(&ot_sram_ctrl_mem_switch_to_ram_fn, s);
     s->init_timer =
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_sram_ctrl_init_chunk_fn, s);
     s->prng = ot_prng_allocate();
