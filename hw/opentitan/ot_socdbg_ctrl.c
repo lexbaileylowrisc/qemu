@@ -37,6 +37,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
+#include "hw/riscv/ibex_gpio.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
 #include "trace/trace-hw_opentitan.h"
@@ -412,9 +413,12 @@ static void ot_socdbg_ctrl_a0_debug(void *opaque, int n, int level)
 
     g_assert(n == 0);
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "A0_DEBUG", 0, level);
+    trace_ot_socdbg_ctrl_rcv(s->ot_id, "A0_DEBUG", 0, ibex_gpio_repr(level));
 
-    if (level) {
+    /* expect an Ibex GPIO signal */
+    g_assert(ibex_gpio_check(level));
+
+    if (ibex_gpio_level(level)) {
         s->socdbg_bm |= R_SOCDBG_A0_DEBUG_MASK;
     } else {
         s->socdbg_bm &= ~R_SOCDBG_A0_DEBUG_MASK;
@@ -429,9 +433,14 @@ static void ot_socdbg_ctrl_halt_cpu_boot(void *opaque, int n, int level)
 
     g_assert(n == 0);
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "HALT_CPU_BOOT", 0, level);
+    trace_ot_socdbg_ctrl_rcv(s->ot_id, "HALT_CPU_BOOT", 0,
+                             ibex_gpio_repr(level));
 
-    if (level) {
+    /* expect an Ibex GPIO signal */
+    g_assert(ibex_gpio_check(level));
+
+    /* active low */
+    if (!ibex_gpio_level(level)) {
         s->socdbg_bm |= R_SOCDBG_HALT_CPU_BOOT_MASK;
     } else {
         s->socdbg_bm &= ~R_SOCDBG_HALT_CPU_BOOT_MASK;
@@ -446,8 +455,10 @@ static void ot_socdbg_ctrl_lc_broadcast(void *opaque, int n, int level)
 
     unsigned bcast = (unsigned)n;
     g_assert(bcast < OT_LC_BROADCAST_COUNT);
+    g_assert(!ibex_gpio_check(level));
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, LC_BCAST_NAME(bcast), bcast, level);
+    trace_ot_socdbg_ctrl_rcv(s->ot_id, LC_BCAST_NAME(bcast), bcast,
+                             level ? '1' : '0');
 
     switch (n) {
     case OT_LC_RAW_TEST_RMA:
@@ -516,8 +527,9 @@ static void ot_socdbg_ctrl_a0_force_raw(void *opaque, int n, int level)
     OtSoCDbgCtrlState *s = opaque;
 
     g_assert(n == 0);
+    g_assert(!ibex_gpio_check(level));
 
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "FORCE_RAW", 0, level);
+    trace_ot_socdbg_ctrl_rcv(s->ot_id, "FORCE_RAW", 0, level ? '1' : '0');
 
     if (level) {
         s->socdbg_bm |= R_SOCDBG_A0_FORCE_RAW_MASK;
@@ -533,8 +545,7 @@ static void ot_socdbg_ctrl_socdbg_state(void *opaque, int n, int level)
     OtSoCDbgCtrlState *s = opaque;
 
     g_assert(n == 0);
-
-    trace_ot_socdbg_ctrl_rcv(s->ot_id, "SOCDBG_STATE", 0, level);
+    g_assert(!ibex_gpio_check(level));
 
     switch (level) {
     case 0:
@@ -549,6 +560,8 @@ static void ot_socdbg_ctrl_socdbg_state(void *opaque, int n, int level)
     default:
         g_assert_not_reached();
     }
+
+    trace_ot_socdbg_ctrl_rcv(s->ot_id, "SOCDBG_STATE", 0, (char)('0' + level));
 
     trace_ot_socdbg_ctrl_socdbg_state(s->ot_id, SOCDBG_NAME(s->socdbg_state));
 
