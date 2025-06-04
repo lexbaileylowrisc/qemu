@@ -9,7 +9,7 @@ controller virtual device.
 usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [-k {auto,otp,fuz}] [-e BITS] [-C CONFIG] [-c INT] [-i INT]
                   [-w] [-n] [-f PART:FIELD] [--no-version] [-s] [-E] [-D] [-U]
-                  [-G {LCVAL,LCTPL,PARTS,REGS}] [-F]
+                  [-g {LCVAL,LCTPL,PARTS,REGS}] [-F] [-G PART]
                   [--change PART:FIELD=VALUE] [--empty PARTITION]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
                   [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT] [-v] [-d]
@@ -44,9 +44,11 @@ Commands:
   -E, --ecc-recover     attempt to recover errors with ECC
   -D, --digest          check the OTP HW partition digest
   -U, --update          update RAW file after ECC recovery or bit changes
-  -G, --generate {LCVAL,LCTPL,PARTS,REGS}
+  -g, --generate {LCVAL,LCTPL,PARTS,REGS}
                         generate C code, see doc for options
   -F, --fix-ecc         rebuild ECC
+  -G, --fix-digest PART
+                        rebuild HW digest
   --change PART:FIELD=VALUE
                         change the content of an OTP field
   --empty PARTITION     reset the content of a whole partition, including its
@@ -119,6 +121,13 @@ Fuse RAW images only use the v1 type.
 * `-f` select which partition(s) and partition field(s) should be shown when option `-s` is used.
   When not specified, all partitions and fields are reported.
 
+* `-G` can be used to (re)build the HW digest of a partition after altering one or more of its
+  fields, see `--change` option.
+
+* `-g` can be used to generate C code for QEMU, from OTP and LifeCycle known definitions. See the
+  [Generation](#generation) section for details. See option `-o` to specify the path to the file to
+  generate
+
 * `-i` specify the initialization vector for the Present scrambler used for partition digests.
   This value is "usually" found within the `hw/ip/otp_ctrl/rtl/otp_ctrl_part_pkg.sv` OT file,
   from the last entry of `RndCnstDigestIV` array, _i.e._ item 0. It is used along with option
@@ -133,10 +142,6 @@ Fuse RAW images only use the v1 type.
 * `-k` specify the kind of input VMEM file, either OTP or Fuse kind. The script attempts to detect
   the kind of the input VMEM file from its content when this option is not specified or set to
   `auto`. It is fails to detect the file kind or if the kind needs to be enforced, use this option.
-
-* `-G` can be used to generate C code for QEMU, from OTP and LifeCycle known definitions. See the
-  [Generation](#generation) section for details. See option `-o` to specify the path to the file to
-  generate
 
 * `-l` specify the life cycle system verilog file that defines the encoding of the life cycle
   states. This option is not required to generate a RAW image file, but required when the `-L`
@@ -296,10 +301,10 @@ scripts/opentitan/otptool.py -r otp.raw -j otp_ctrl_mmap.hjson -D \
 
 Generate a C source file with LifeCycle constant definitions:
 ````sh
-scripts/opentitan/otptool.py -G LCVAL -l lc_ctrl_state_pkg.sv -o lc_state.c
+scripts/opentitan/otptool.py -g LCVAL -l lc_ctrl_state_pkg.sv -o lc_state.c
 ````
 
 Generates a C source file with OTP partition properties:
 ````sh
-scripts/opentitan/otptool.py -j otp_ctrl_mmap.hjson -G PARTS -o otp_part.c
+scripts/opentitan/otptool.py -j otp_ctrl_mmap.hjson -g PARTS -o otp_part.c
 ````

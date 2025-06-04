@@ -75,6 +75,11 @@ class OtpPartition:
         return any(getattr(self, f'{k}w_digest', False) for k in 'sh')
 
     @property
+    def has_hw_digest(self) -> bool:
+        """Check if the partition supports HW digest."""
+        return getattr(self, 'hw_digest', False)
+
+    @property
     def is_locked(self) -> bool:
         """Check if the partition is locked, based on its digest."""
         return (self.has_digest and self._digest_bytes and
@@ -296,6 +301,24 @@ class OtpPartition:
                        self.name)
         self._data = b''.join((self._data[:prop.offset], bytes(prop.size),
                                self._data[prop.end:]))
+
+    def build_digest(self, digest_iv: int, digest_constant: int, erase: bool) \
+            -> None:
+        """Rebuild the digest of a partition from its content.
+
+           :param erase: whether to erase any existing digest or combine it
+        """
+        if not self.has_hw_digest:
+            raise ValueError(f'Partition {self.name} does not have a HW digest')
+        assert self._digest_bytes is not None
+        digest = self.compute_digest(self._data, digest_iv, digest_constant)
+        self._log.info('New partition %s digest: %016x', self.name, digest)
+        digest_len = len(self._digest_bytes)
+        if erase:
+            self._digest_bytes = bytes(digest_len)
+        bdigest = digest.to_bytes(length=digest_len, byteorder='little')
+        self._digest_bytes = bytes((a | b)
+                                   for a, b in zip(self._digest_bytes, bdigest))
 
     def _retrieve_properties(self, field: str) -> tuple[int, int]:
         is_digest = self.has_digest and field.upper() == 'DIGEST'

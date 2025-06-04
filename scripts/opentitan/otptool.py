@@ -83,10 +83,13 @@ def main():
         commands.add_argument('-U', '--update', action='store_true',
                               help='update RAW file after ECC recovery or bit '
                                    'changes')
-        commands.add_argument('-G', '--generate', choices=genfmts,
+        commands.add_argument('-g', '--generate', choices=genfmts,
                               help='generate C code, see doc for options')
         commands.add_argument('-F', '--fix-ecc', action='store_true',
                               help='rebuild ECC')
+        commands.add_argument('-G', '--fix-digest', action='append',
+                              metavar='PART', default=[],
+                              help='rebuild HW digest')
         commands.add_argument('--change', action='append',
                               metavar='PART:FIELD=VALUE', default=[],
                               help='change the content of an OTP field')
@@ -119,7 +122,8 @@ def main():
 
         if not (args.vmem or args.raw):
             if any((args.show, args.digest, args.ecc_recover, args.clear_bit,
-                    args.set_bit, args.toggle_bit, args.change, args.erase)):
+                    args.set_bit, args.toggle_bit, args.change, args.erase,
+                    args.fix_digest)):
                 argparser.error('At least one raw or vmem file is required')
 
         if not args.vmem and args.kind:
@@ -164,6 +168,8 @@ def main():
                 argparser.error('Cannot change an OTP field without an OTP map')
             if args.erase:
                 argparser.error('Cannot erase an OTP field without an OTP map')
+            if args.fix_digest:
+                argparser.error('Cannot generate HW digest without an OTP map')
         else:
             otpmap = OtpMap()
             otpmap.load(args.otp_map)
@@ -271,12 +277,7 @@ def main():
                 otp.set_digest_iv(args.iv)
             if args.constant:
                 otp.set_digest_constant(args.constant)
-            if lcext:
-                otp.load_lifecycle(lcext)
-            if args.show:
-                otp.decode(not args.no_decode, args.wide, output,
-                           not args.no_version, args.filter)
-            if args.digest:
+            if args.digest or args.fix_digest:
                 if not otp.has_present_constants:
                     if args.raw and otp.version == 1:
                         msg = '; OTP v1 image does not track them'
@@ -285,9 +286,17 @@ def main():
                     # can either be defined on the CLI or in an existing QEWU
                     # image
                     argparser.error(f'Present scrambler constants are required '
-                                    f'to verify the partition digest{msg}')
+                                    f'to handle the partition digest{msg}')
+            for part in args.fix_digest:
+                otp.build_digest(part, True)
+                check_update = True
+            if lcext:
+                otp.load_lifecycle(lcext)
+            if args.show:
+                otp.decode(not args.no_decode, args.wide, output,
+                           not args.no_version, args.filter)
+            if args.digest:
                 otp.verify(True)
-
             for pos, bitact in enumerate(bit_actions):
                 if alter_bits[pos]:
                     getattr(otp, f'{bitact}_bits')(alter_bits[pos])

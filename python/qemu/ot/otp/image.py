@@ -437,6 +437,18 @@ class OtpImage:
         part.erase_field(field)
         self._reload(partix, True)
 
+    def build_digest(self, partition: Union[int, str], erase: bool) -> None:
+        """Rebuild the digest of a partition from its content.
+
+           :param partition: the name or the index of the partition to erase
+           :param erase: whether to erase any existing digest or combine it
+        """
+        if any(c is None for c in (self._digest_iv, self._digest_constant)):
+            raise RuntimeError('Missing Present constants')
+        partix, part = self._retrieve_partition(partition)
+        part.build_digest(self._digest_iv, self._digest_constant, erase)
+        self._reload(partix, True)
+
     @staticmethod
     def bit_parity(data: int) -> int:
         """Compute the bit parity of an integer, i.e. reduce the vector to a
