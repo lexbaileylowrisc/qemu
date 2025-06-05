@@ -225,7 +225,8 @@ static void ot_mbx_host_update_irqs(OtMbxState *s)
     for (unsigned ix = 0; ix < PARAM_NUM_IRQS; ix++) {
         int level = (int)(bool)(levels & (1u << ix));
         if (level != ibex_irq_get_level(&host->irqs[ix])) {
-            trace_ot_mbx_host_update_irq(ibex_irq_get_level(&host->irqs[ix]),
+            trace_ot_mbx_host_update_irq(s->ot_id,
+                                         ibex_irq_get_level(&host->irqs[ix]),
                                          level);
         }
         ibex_irq_set(&host->irqs[ix], level);
