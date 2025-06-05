@@ -1528,8 +1528,8 @@ static bool ot_otp_dj_is_readable(OtOTPDjState *s, int partition)
         reg = UINT32_MAX;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid partition: %d\n", __func__,
-                      partition);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: invalid partition: %d\n",
+                      __func__, s->ot_id, partition);
         return false;
     }
 
@@ -1613,20 +1613,22 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
 
         switch ((int)sig) {
         case OT_OTP_LC_DFT_EN:
-            qemu_log_mask(LOG_UNIMP, "%s: DFT feature not supported\n",
-                          __func__);
+            qemu_log_mask(LOG_UNIMP, "%s: %s: DFT feature not supported\n",
+                          __func__, s->ot_id);
             break;
         case OT_OTP_LC_ESCALATE_EN:
             if (level) {
                 DAI_CHANGE_STATE(s, OTP_DAI_ERROR);
                 LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
                 // TODO: manage other FSMs
-                qemu_log_mask(LOG_UNIMP, "%s: ESCALATE partially implemented\n",
-                              __func__);
+                qemu_log_mask(LOG_UNIMP,
+                              "%s: %s: ESCALATE partially implemented\n",
+                              __func__, s->ot_id);
             }
             break;
         case OT_OTP_LC_CHECK_BYP_EN:
-            qemu_log_mask(LOG_UNIMP, "%s: Bypass is ignored\n", __func__);
+            qemu_log_mask(LOG_UNIMP, "%s: %s: bypass is ignored\n", __func__,
+                          s->ot_id);
             break;
         case OT_OTP_LC_CREATOR_SEED_SW_RW_EN:
             for (unsigned ix = 0; ix < OTP_PART_COUNT; ix++) {
@@ -1645,11 +1647,12 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
             }
             break;
         case OT_OTP_LC_SEED_HW_RD_EN:
-            qemu_log_mask(LOG_UNIMP, "%s: Seed HW read is ignored\n", __func__);
+            qemu_log_mask(LOG_UNIMP, "%s: %s: seed HW read is ignored\n",
+                          __func__, s->ot_id);
             break;
         default:
-            error_setg(&error_fatal, "%s: unexpected LC broadcast %d\n",
-                       __func__, sig);
+            error_setg(&error_fatal, "%s: %s: unexpected LC broadcast %d\n",
+                       __func__, s->ot_id, sig);
             g_assert_not_reached();
             break;
         }
@@ -1696,7 +1699,8 @@ ot_otp_dj_load_partition_digest(OtOTPDjState *s, unsigned partition)
     unsigned digoff = (unsigned)OtOTPPartDescs[partition].digest_offset;
 
     if ((digoff + sizeof(uint64_t)) > s->otp->data_size) {
-        error_setg(&error_fatal, "Partition located outside storage?\n");
+        error_setg(&error_fatal, "%s: partition located outside storage?",
+                   s->ot_id);
         /* linter doest not know the above call never returns */
         return 0u;
     }
@@ -1766,7 +1770,6 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
         /* TODO: revert buffered part to default */
     } else {
         trace_ot_otp_integrity_report(s->ot_id, PART_NAME(ix), ix, "digest OK");
-        pctrl->failed = false;
     }
 }
 
@@ -1821,7 +1824,8 @@ static void ot_otp_dj_dai_clear_error(OtOTPDjState *s)
 static void ot_otp_dj_dai_read(OtOTPDjState *s)
 {
     if (ot_otp_dj_dai_is_busy(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: DAI controller busy\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy\n",
+                      __func__, s->ot_id);
         return;
     }
 
@@ -1834,16 +1838,18 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
     int partition = ot_otp_dj_get_part_from_address(s, address);
 
     if (partition < 0) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
-                      __func__, address);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: invalid partition address 0x%x\n", __func__,
+                      s->ot_id, address);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     if (partition >= OTP_PART_LIFE_CYCLE) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Life cycle partition cannot be accessed from DAI\n",
-                      __func__);
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: %s: life cycle partition cannot be accessed from DAI\n",
+            __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -1931,7 +1937,8 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
     uint32_t hi = s->regs[R_DIRECT_ACCESS_WDATA_1];
 
     if ((dst_lo & ~lo) || (dst_hi & ~hi)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Cannot clear OTP bits\n",
+                      __func__, s->ot_id);
         ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
     }
 
@@ -1942,7 +1949,7 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
     if (ot_otp_dj_write_backend(s, dst,
                                 (unsigned)(offset + waddr * sizeof(uint32_t)),
                                 sizeof(uint64_t))) {
-        error_report("%s: cannot update OTP backend", __func__);
+        error_report("%s: %s: cannot update OTP backend", __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return -1;
     }
@@ -1957,8 +1964,9 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
         uint32_t ecc = (ecc_hi << 16u) | ecc_lo;
 
         if (*edst & ~ecc) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP ECC bits\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: Cannot clear OTP ECC bits\n", __func__,
+                          s->ot_id);
             ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
         }
         *edst |= ecc;
@@ -1966,7 +1974,8 @@ static int ot_otp_dj_dai_write_u64(OtOTPDjState *s, unsigned address)
         offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
         if (ot_otp_dj_write_backend(s, edst, (unsigned)(offset + (waddr << 1u)),
                                     sizeof(uint32_t))) {
-            error_report("%s: cannot update OTP backend", __func__);
+            error_report("%s: %s: cannot update OTP backend", __func__,
+                         s->ot_id);
             ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
             return -1;
         }
@@ -1985,7 +1994,8 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
     uint32_t data = s->regs[R_DIRECT_ACCESS_WDATA_0];
 
     if (*dst & ~data) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP bits\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cannot clear OTP bits\n",
+                      __func__, s->ot_id);
         ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
     }
 
@@ -1995,7 +2005,7 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
     if (ot_otp_dj_write_backend(s, dst,
                                 (unsigned)(offset + waddr * sizeof(uint32_t)),
                                 sizeof(uint32_t))) {
-        error_report("%s: cannot update OTP backend", __func__);
+        error_report("%s: %s: cannot update OTP backend", __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return -1;
     }
@@ -2006,8 +2016,9 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
         uint16_t ecc = ot_otp_dj_compute_ecc_u32(*dst);
 
         if (*edst & ~ecc) {
-            qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP ECC bits\n",
-                          __func__);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: cannot clear OTP ECC bits\n", __func__,
+                          s->ot_id);
             ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
         }
         *edst |= ecc;
@@ -2016,7 +2027,8 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
         if (ot_otp_dj_write_backend(s, edst,
                                     (unsigned)(offset + (address >> 1u)),
                                     sizeof(uint16_t))) {
-            error_report("%s: cannot update OTP backend", __func__);
+            error_report("%s: %s: cannot update OTP backend", __func__,
+                         s->ot_id);
             ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
             return -1;
         }
@@ -2031,14 +2043,16 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
 static void ot_otp_dj_dai_write(OtOTPDjState *s)
 {
     if (ot_otp_dj_dai_is_busy(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: DAI controller busy\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy\n",
+                      __func__, s->ot_id);
         return;
     }
 
     if (!ot_otp_dj_is_backend_writable(s)) {
         /* OTP backend missing or read-only; reject any write request */
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: OTP backend file is missing or R/O\n", __func__);
+                      "%s: %s: OTP backend file is missing or R/O\n", __func__,
+                      s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return;
     }
@@ -2052,16 +2066,18 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     int partition = ot_otp_dj_get_part_from_address(s, address);
 
     if (partition < 0) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
-                      __func__, address);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: invalid partition address 0x%x\n", __func__,
+                      s->ot_id, address);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     if (partition >= OTP_PART_LIFE_CYCLE) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Life cycle partition cannot be accessed from DAI\n",
-                      __func__);
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: %s: Life cycle partition cannot be accessed from DAI\n",
+            __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2069,16 +2085,16 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     OtOTPPartController *pctrl = &s->partctrls[partition];
 
     if (pctrl->locked) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Partition %s (%u) is locked\n",
-                      __func__, PART_NAME(partition), partition);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s (%u) is locked\n",
+                      __func__, s->ot_id, PART_NAME(partition), partition);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     if (pctrl->write_lock) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Partition %s (%u) is write locked\n", __func__,
-                      PART_NAME(partition), partition);
+                      "%s: %s: artition %s (%u) is write locked\n", __func__,
+                      s->ot_id, PART_NAME(partition), partition);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2089,10 +2105,11 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
     if (is_digest) {
         if (OtOTPPartDescs[partition].hw_digest) {
             /* should have been a Digest command, not a Write command */
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Partition %s (%u) HW digest cannot be directly "
-                          "written\n",
-                          __func__, PART_NAME(partition), partition);
+            qemu_log_mask(
+                LOG_GUEST_ERROR,
+                "%s: %s: partition %s (%u) HW digest cannot be directly "
+                "written\n",
+                __func__, s->ot_id, PART_NAME(partition), partition);
             ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
             return;
         }
@@ -2120,14 +2137,16 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 {
     if (ot_otp_dj_dai_is_busy(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: DAI controller busy\n", __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy\n",
+                      __func__, s->ot_id);
         return;
     }
 
     if (!ot_otp_dj_is_backend_writable(s)) {
         /* OTP backend missing or read-only; reject any write request */
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: OTP backend file is missing or R/O\n", __func__);
+                      "%s: %s: OTP backend file is missing or R/O\n", __func__,
+                      s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return;
     }
@@ -2141,24 +2160,26 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
     int partition = ot_otp_dj_get_part_from_address(s, address);
 
     if (partition < 0) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Invalid partition address 0x%x\n",
-                      __func__, address);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Invalid partition address 0x%x\n", __func__,
+                      s->ot_id, address);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     if (partition >= OTP_PART_LIFE_CYCLE) {
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Life cycle partition cannot be accessed from DAI\n",
-                      __func__);
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: %s: Life cycle partition cannot be accessed from DAI\n",
+            __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     if (!OtOTPPartDescs[partition].hw_digest) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Invalid partition, no HW digest on %s (#%u)\n",
-                      __func__, PART_NAME(partition), partition);
+                      "%s: %s: Invalid partition, no HW digest on %s (#%u)\n",
+                      __func__, s->ot_id, PART_NAME(partition), partition);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2166,16 +2187,16 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
     OtOTPPartController *pctrl = &s->partctrls[partition];
 
     if (pctrl->locked) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Partition %s (%u) is locked\n",
-                      __func__, PART_NAME(partition), partition);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Partition %s (%u) is locked\n",
+                      __func__, s->ot_id, PART_NAME(partition), partition);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
 
     if (pctrl->write_lock) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Partition %s (%u) is write locked\n", __func__,
-                      PART_NAME(partition), partition);
+                      "%s: %s: Partition %s (%u) is write locked\n", __func__,
+                      s->ot_id, PART_NAME(partition), partition);
         ot_otp_dj_dai_set_error(s, OTP_ACCESS_ERROR);
         return;
     }
@@ -2198,7 +2219,7 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
         ot_otp_dj_compute_partition_digest(s, data, part_size);
     s->dai->partition = partition;
 
-    TRACE_OTP("%s: next digest %016llx from %s\n", __func__,
+    TRACE_OTP("%s: %s: next digest %016llx from %s\n", __func__, s->ot_id,
               pctrl->buffer.next_digest, ot_otp_hexdump(data, part_size));
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_WAIT);
@@ -2224,8 +2245,8 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
     pctrl->buffer.next_digest = 0;
 
     if (*dst & ~data) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP data bits\n",
-                      __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cannot clear OTP data bits\n",
+                      __func__, s->ot_id);
         ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
     }
     *dst |= data;
@@ -2234,7 +2255,7 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
     offset = (uintptr_t)s->otp->data - (uintptr_t)s->otp->storage;
     if (ot_otp_dj_write_backend(s, dst, (unsigned)(offset + address),
                                 sizeof(uint64_t))) {
-        error_report("%s: cannot update OTP backend", __func__);
+        error_report("%s: %s: cannot update OTP backend", __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return;
     }
@@ -2247,8 +2268,8 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
     uint32_t *edst = &s->otp->ecc[ewaddr];
 
     if (*edst & ~ecc) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Cannot clear OTP ECC bits\n",
-                      __func__);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: cannot clear OTP ECC bits\n",
+                      __func__, s->ot_id);
         ot_otp_dj_set_error(s, OTP_ENTRY_DAI, OTP_MACRO_WRITE_BLANK_ERROR);
     }
     *edst |= ecc;
@@ -2256,7 +2277,7 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
     offset = (uintptr_t)s->otp->ecc - (uintptr_t)s->otp->storage;
     if (ot_otp_dj_write_backend(s, edst, (unsigned)(offset + (ewaddr << 2u)),
                                 sizeof(uint32_t))) {
-        error_report("%s: cannot update OTP backend", __func__);
+        error_report("%s: %s: cannot update OTP backend", __func__, s->ot_id);
         ot_otp_dj_dai_set_error(s, OTP_MACRO_ERROR);
         return;
     }
@@ -2568,13 +2589,14 @@ static uint64_t ot_otp_dj_reg_read(void *opaque, hwaddr addr, unsigned size)
     case R_INTR_TEST:
     case R_ALERT_TEST:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x02%" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x02%" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0;
         break;
     }
@@ -2623,8 +2645,9 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
         if (!(s->regs[R_DIRECT_ACCESS_REGWEN] &
               R_DIRECT_ACCESS_REGWEN_REGWEN_MASK)) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s is not enabled, %s is protected\n", __func__,
-                          REG_NAME(R_DIRECT_ACCESS_REGWEN), REG_NAME(reg));
+                          "%s: %s: %s is not enabled, %s is protected\n",
+                          __func__, s->ot_id, REG_NAME(R_DIRECT_ACCESS_REGWEN),
+                          REG_NAME(reg));
             return;
         }
         break;
@@ -2632,8 +2655,9 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
         if (!(s->regs[R_CHECK_TRIGGER_REGWEN] &
               R_CHECK_TRIGGER_REGWEN_REGWEN_MASK)) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s is not enabled, %s is protected\n", __func__,
-                          REG_NAME(R_CHECK_TRIGGER_REGWEN), REG_NAME(reg));
+                          "%s: %s: %s is not enabled, %s is protected\n",
+                          __func__, s->ot_id, REG_NAME(R_CHECK_TRIGGER_REGWEN),
+                          REG_NAME(reg));
             return;
         }
         break;
@@ -2642,8 +2666,9 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
     case R_CONSISTENCY_CHECK_PERIOD:
         if (!(s->regs[R_CHECK_REGWEN] & R_CHECK_REGWEN_REGWEN_MASK)) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: %s is not enabled, %s is protected\n", __func__,
-                          REG_NAME(R_CHECK_REGWEN), REG_NAME(reg));
+                          "%s: %s: %s is not enabled, %s is protected\n",
+                          __func__, s->ot_id, REG_NAME(R_CHECK_REGWEN),
+                          REG_NAME(reg));
             return;
         }
         break;
@@ -2714,8 +2739,8 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
     case R_SECRET3_DIGEST_0:
     case R_SECRET3_DIGEST_1:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%03" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%03" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         return;
     default:
         break;
@@ -2783,12 +2808,13 @@ static void ot_otp_dj_reg_write(void *opaque, hwaddr addr, uint64_t value,
     case R_CHECK_TIMEOUT:
     case R_INTEGRITY_CHECK_PERIOD:
     case R_CONSISTENCY_CHECK_PERIOD:
-        qemu_log_mask(LOG_UNIMP, "%s: %s is not supported\n", __func__,
-                      REG_NAME(reg));
+        qemu_log_mask(LOG_UNIMP, "%s: %s: %s is not supported\n", __func__,
+                      s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 }
@@ -3190,7 +3216,8 @@ static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
     case OTP_KEY_FLASH_DATA:
     case OTP_KEY_FLASH_ADDR:
         /* there is no flash key on Darjeeling */
-        qemu_log_mask(LOG_UNIMP, "%s: flash key is not supported\n", __func__);
+        qemu_log_mask(LOG_UNIMP, "%s: %s: flash key is not supported\n",
+                      __func__, ds->ot_id);
         break;
     case OTP_KEY_OTBN:
         memset(key, 0, sizeof(*key));
@@ -3204,14 +3231,15 @@ static void ot_otp_dj_get_otp_key(OtOTPState *s, OtOTPKeyType type,
         need_entropy = (SRAM_KEY_WIDTH * 2u + SRAM_NONCE_WIDTH) / 32u;
         if (avail_entropy < need_entropy) {
             unsigned count = need_entropy - avail_entropy;
-            error_report("%s: not enough entropy for key %d, fake %u words",
-                         __func__, type, count);
+            error_report("%s: %s: not enough entropy for key %d, fake %u words",
+                         __func__, ds->ot_id, type, count);
             ot_otp_dj_fake_entropy(ds, count);
         }
         ot_otp_dj_generate_otp_sram_key(ds, key);
         break;
     default:
-        error_report("%s: invalid OTP key type: %d", __func__, type);
+        error_report("%s: %s: invalid OTP key type: %d", __func__, ds->ot_id,
+                     type);
         break;
     }
 }
@@ -3280,7 +3308,8 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
         if (ot_otp_dj_write_backend(s, &s->otp->data[lc_off],
                                     (unsigned)(offset + lcdesc->offset),
                                     lcdesc->size)) {
-            error_report("%s: cannot update OTP backend", __func__);
+            error_report("%s: %s: cannot update OTP backend", __func__,
+                         s->ot_id);
             if (lci->error == OTP_NO_ERROR) {
                 lci->error = OTP_MACRO_ERROR;
                 LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
@@ -3292,7 +3321,8 @@ static void ot_otp_dj_lci_write_complete(OtOTPDjState *s, bool success)
                                         (unsigned)(offset +
                                                    (lcdesc->offset >> 1u)),
                                         lcdesc->size >> 1u)) {
-                error_report("%s: cannot update OTP backend", __func__);
+                error_report("%s: %s: cannot update OTP backend", __func__,
+                             s->ot_id);
                 if (lci->error == OTP_NO_ERROR) {
                     lci->error = OTP_MACRO_ERROR;
                     LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
@@ -3331,7 +3361,8 @@ static void ot_otp_dj_lci_write_word(void *opaque)
     if (!ot_otp_dj_is_backend_writable(s)) {
         /* OTP backend missing or read-only; reject any write request */
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: OTP backend file is missing or R/O\n", __func__);
+                      "%s: %s: OTP backend file is missing or R/O\n", __func__,
+                      s->ot_id);
         lci->error = OTP_MACRO_ERROR;
         LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
         ot_otp_dj_lci_write_complete(s, false);
@@ -3363,8 +3394,8 @@ static void ot_otp_dj_lci_write_word(void *opaque)
 
     if (cur_val & ~new_val) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Cannot clear OTP bits @ %u: 0x%04x / 0x%04x\n",
-                      __func__, lci->hpos, cur_val, new_val);
+                      "%s: %s: cannot clear OTP bits @ %u: 0x%04x / 0x%04x\n",
+                      __func__, s->ot_id, lci->hpos, cur_val, new_val);
         if (lci->error == OTP_NO_ERROR) {
             lci->error = OTP_MACRO_WRITE_BLANK_ERROR;
         }
@@ -3387,9 +3418,10 @@ static void ot_otp_dj_lci_write_word(void *opaque)
         trace_ot_otp_lci_write_ecc(s->ot_id, lci->hpos, cur_ecc, new_ecc);
 
         if (cur_ecc & ~new_ecc) {
-            qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Cannot clear OTP ECC @ %u: 0x%02x / 0x%02x\n",
-                          __func__, lci->hpos, cur_ecc, new_ecc);
+            qemu_log_mask(
+                LOG_GUEST_ERROR,
+                "%s: %s: cannot clear OTP ECC @ %u: 0x%02x / 0x%02x\n",
+                __func__, s->ot_id, lci->hpos, cur_ecc, new_ecc);
             if (lci->error == OTP_NO_ERROR) {
                 lci->error = OTP_MACRO_WRITE_BLANK_ERROR;
             }
@@ -3491,26 +3523,28 @@ static void ot_otp_dj_pwr_load(OtOTPDjState *s)
         bool write = blk_supports_write_perm(s->blk);
         uint64_t perm = BLK_PERM_CONSISTENT_READ | (write ? BLK_PERM_WRITE : 0);
         if (blk_set_perm(s->blk, perm, perm, &error_fatal)) {
-            warn_report("%s: OTP backend is R/O", __func__);
+            warn_report("%s: %s: OTP backend is R/O", __func__, s->ot_id);
             write = false;
         }
 
         int rc = blk_pread(s->blk, 0, (int64_t)otp_size, otp->storage, 0);
         if (rc < 0) {
             error_setg(&error_fatal,
-                       "failed to read the initial OTP content: %d", rc);
+                       "%s: failed to read the initial OTP content: %d",
+                       s->ot_id, rc);
             return;
         }
 
         const struct otp_header *otp_hdr = (const struct otp_header *)base;
 
         if (memcmp(otp_hdr->magic, "vOTP", sizeof(otp_hdr->magic)) != 0) {
-            error_setg(&error_fatal, "OTP file is not a valid OTP backend");
+            error_setg(&error_fatal, "%s: OTP file is not a valid OTP backend",
+                       s->ot_id);
             return;
         }
         if (otp_hdr->version != 1u && otp_hdr->version != 2u) {
-            error_setg(&error_fatal, "OTP file version %u is not supported",
-                       otp_hdr->version);
+            error_setg(&error_fatal, "%s: OTP file version %u is not supported",
+                       s->ot_id, otp_hdr->version);
             return;
         }
 
@@ -3524,8 +3558,9 @@ static void ot_otp_dj_pwr_load(OtOTPDjState *s)
 
         if (otp->ecc_bit_count != 6u || !ot_otp_dj_is_ecc_enabled(s)) {
             qemu_log_mask(LOG_UNIMP,
-                          "%s: support for ECC %u/%u not implemented\n",
-                          __func__, otp->ecc_granule, otp->ecc_bit_count);
+                          "%s: %s: support for ECC %u/%u not implemented\n",
+                          __func__, s->ot_id, otp->ecc_granule,
+                          otp->ecc_bit_count);
         }
 
         trace_ot_otp_load_backend(s->ot_id, otp_hdr->version,
