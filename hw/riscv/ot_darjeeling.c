@@ -754,9 +754,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_ALERT(0, 72),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR,
-                                     OT_PWRMGR_ROM_GOOD, 0),
+                             OT_PWRMGR_ROM_GOOD, 0),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR,
-                                     OT_PWRMGR_ROM_DONE, 0)
+                             OT_PWRMGR_ROM_DONE, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("kmac", KMAC)
@@ -778,9 +778,9 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_ALERT(0, 73),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_GOOD, 0, PWRMGR,
-                                     OT_PWRMGR_ROM_GOOD, 1),
+                             OT_PWRMGR_ROM_GOOD, 1),
             OT_DJ_SOC_SIGNAL(OT_ROM_CTRL_DONE, 0, PWRMGR,
-                                     OT_PWRMGR_ROM_DONE, 1)
+                             OT_PWRMGR_ROM_DONE, 1)
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("kmac", KMAC)
@@ -1127,26 +1127,21 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(0, 10),
             OT_DJ_SOC_GPIO_ALERT(1, 11),
             OT_DJ_SOC_GPIO_ALERT(2, 12),
-            OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN,
-                                  LC_HW_DEBUG),
-            OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN,
-                                  LC_ESCALATE),
-            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN,
-                                    IBEX_WRAPPER, OT_IBEX_WRAPPER_CPU_EN,
-                                    OT_IBEX_LC_CTRL_CPU_EN),
-            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN,
-                                     OTP_CTRL, OT_LC_BROADCAST,
-                                     OT_OTP_LC_CHECK_BYP_EN),
-            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST,
-                                     OT_LC_CREATOR_SEED_SW_RW_EN,
-                                     OTP_CTRL, OT_LC_BROADCAST,
-                                     OT_OTP_LC_CREATOR_SEED_SW_RW_EN),
+            OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_HW_DEBUG_EN, LC_HW_DEBUG),
+            OT_DJ_SOC_D2S(OT_LC_BROADCAST, OT_LC_ESCALATE_EN, LC_ESCALATE),
+            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CPU_EN, IBEX_WRAPPER,
+                             OT_IBEX_WRAPPER_CPU_EN, OT_IBEX_LC_CTRL_CPU_EN),
+            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CHECK_BYP_EN, OTP_CTRL,
+                             OT_LC_BROADCAST, OT_OTP_LC_CHECK_BYP_EN),
+            OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_CREATOR_SEED_SW_RW_EN,
+                             OTP_CTRL, OT_LC_BROADCAST,
+                             OT_OTP_LC_CREATOR_SEED_SW_RW_EN),
             OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_OWNER_SEED_SW_RW_EN,
-                                     OTP_CTRL, OT_LC_BROADCAST,
-                                     OT_OTP_LC_OWNER_SEED_SW_RW_EN),
+                             OTP_CTRL, OT_LC_BROADCAST,
+                             OT_OTP_LC_OWNER_SEED_SW_RW_EN),
             OT_DJ_SOC_SIGNAL(OT_LC_BROADCAST, OT_LC_SEED_HW_RD_EN,
-                                     OTP_CTRL, OT_LC_BROADCAST,
-                                     OT_OTP_LC_SEED_HW_RD_EN),
+                             OTP_CTRL, OT_LC_BROADCAST,
+                             OT_OTP_LC_SEED_HW_RD_EN),
             OT_DJ_SOC_RSP(OT_PWRMGR_LC, PWRMGR)
         ),
         .link = IBEXDEVICELINKDEFS(
