@@ -1849,8 +1849,8 @@ static void ot_otp_dj_dai_clear_error(OtOTPDjState *s)
 static void ot_otp_dj_dai_read(OtOTPDjState *s)
 {
     if (ot_otp_dj_dai_is_busy(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy\n",
-                      __func__, s->ot_id);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy: %s\n",
+                      __func__, s->ot_id, DAI_STATE_NAME(s->dai->state));
         return;
     }
 
@@ -2068,8 +2068,8 @@ static int ot_otp_dj_dai_write_u32(OtOTPDjState *s, unsigned address)
 static void ot_otp_dj_dai_write(OtOTPDjState *s)
 {
     if (ot_otp_dj_dai_is_busy(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy\n",
-                      __func__, s->ot_id);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy: %s\n",
+                      __func__, s->ot_id, DAI_STATE_NAME(s->dai->state));
         return;
     }
 
@@ -2162,8 +2162,8 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 {
     if (ot_otp_dj_dai_is_busy(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy\n",
-                      __func__, s->ot_id);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: DAI controller busy: %s\n",
+                      __func__, s->ot_id, DAI_STATE_NAME(s->dai->state));
         return;
     }
 
