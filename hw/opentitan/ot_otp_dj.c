@@ -823,6 +823,7 @@ struct OtOTPDjState {
     char *sram_const_xstr;
     char *sram_iv_xstr;
     uint8_t edn_ep;
+    bool fatal_escalate;
 };
 
 #define REG_NAME_ENTRY(_reg_) [R_##_reg_] = stringify(_reg_)
@@ -1690,6 +1691,9 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
                 qemu_log_mask(LOG_UNIMP,
                               "%s: %s: ESCALATE partially implemented\n",
                               __func__, s->ot_id);
+                if (s->fatal_escalate) {
+                    error_setg(&error_fatal, "%s: OTP LC escalate", s->ot_id);
+                }
             }
             break;
         case OT_OTP_LC_CHECK_BYP_EN:
@@ -3931,6 +3935,7 @@ static Property ot_otp_dj_properties[] = {
     DEFINE_PROP_STRING("digest_iv", OtOTPDjState, digest_iv_xstr),
     DEFINE_PROP_STRING("sram_const", OtOTPDjState, sram_const_xstr),
     DEFINE_PROP_STRING("sram_iv", OtOTPDjState, sram_iv_xstr),
+    DEFINE_PROP_BOOL("fatal_escalate", OtOTPDjState, fatal_escalate, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

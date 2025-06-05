@@ -231,6 +231,9 @@ There are two modes to handle address remapping, with different limitations:
   file used as the OpenTitan OTP image. This _RAW_ file should have been generated with the
   [`otptool.py`](otptool.md) tool.
 
+* on LC escalate reception, it is possible to early abort VM execution. Specify
+  `-global ot-otp-dj.fatal_escalate=true` to enable this feature.
+
 ### SoC Debug controller
 
 SoC debug controller manages SoC debug policies based on external signals - such as GPIO, Power
