@@ -194,6 +194,9 @@ class QEMUExecuter:
                 finally:
                     self._qfm.cleanup_transient()
                     flush_memory_loggers(['pyot', 'pyot.vcp'], LOG_INFO)
+                    flush_memory_loggers(['pyot', 'pyot.vcp', 'pyot.ctx',
+                                          'pyot.file'],
+                                         LOG_INFO)
                 results[tret] += 1
                 sret = self.RESULT_MAP.get(tret, tret)
                 try:
