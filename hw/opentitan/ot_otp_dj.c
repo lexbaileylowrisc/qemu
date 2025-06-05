@@ -1189,6 +1189,17 @@ static bool ot_otp_dj_has_digest(unsigned partition)
            OtOTPPartDescs[partition].sw_digest;
 }
 
+static void ot_otp_dj_disable_all_partitions(OtOTPDjState *s)
+{
+    DAI_CHANGE_STATE(s, OTP_DAI_ERROR);
+    LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
+
+    for (unsigned pix = 0; pix < OTP_PART_COUNT; pix++) {
+        OtOTPPartController *pctrl = &s->partctrls[pix];
+        pctrl->failed = true;
+    }
+}
+
 static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
 {
     /* This is it NUM_ERROR_ENTRIES */
@@ -1226,6 +1237,12 @@ static void ot_otp_dj_set_error(OtOTPDjState *s, unsigned part, OtOTPError err)
         break;
     default:
         break;
+    }
+
+    if (s->alert_bm & ALERT_FATAL_CHECK_ERROR_MASK) {
+        ot_otp_dj_disable_all_partitions(s);
+        s->regs[R_INTR_STATE] |= INTR_OTP_ERROR_MASK;
+        error_report("%s: %s: OTP disabled on fatal error", __func__, s->ot_id);
     }
 
     if (err != OTP_NO_ERROR) {
@@ -1903,6 +1920,13 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
         return;
     }
 
+    const OtOTPPartController *pctrl = &s->partctrls[partition];
+    if (pctrl->failed) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
+                      __func__, s->ot_id, PART_NAME(partition));
+        return;
+    }
+
     bool is_digest = ot_otp_dj_is_part_digest_offset(partition, address);
     bool is_readable = ot_otp_dj_is_readable(s, partition);
     bool is_wide = ot_otp_dj_is_wide_granule(partition, address);
@@ -2133,6 +2157,12 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 
     OtOTPPartController *pctrl = &s->partctrls[partition];
 
+    if (pctrl->failed) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
+                      __func__, s->ot_id, PART_NAME(partition));
+        return;
+    }
+
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s (%u) is locked\n",
                       __func__, s->ot_id, PART_NAME(partition), partition);
@@ -2234,6 +2264,12 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
     }
 
     OtOTPPartController *pctrl = &s->partctrls[partition];
+
+    if (pctrl->failed) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: partition %s is disabled\n",
+                      __func__, s->ot_id, PART_NAME(partition));
+        return;
+    }
 
     if (pctrl->locked) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Partition %s (%u) is locked\n",
