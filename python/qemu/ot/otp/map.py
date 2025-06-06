@@ -69,6 +69,14 @@ class OtpMap:
         """Enumerate the partitions in their address order."""
         return iter(self._partitions)
 
+    def find_field(self, field: str) -> list['OtpPartition']:
+        """Find in which partition(s) a field is defined.
+
+           :param name: the name of the field to locate
+           :return: a list of partitions which contains such a field
+        """
+        return [p for p in self.enumerate_partitions() if p.has_field(field)]
+
     def _generate_partitions(self) -> None:
         parts = self._map.get('partitions', [])
         have_offset = all('offset' in p for p in parts)

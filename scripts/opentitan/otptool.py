@@ -12,7 +12,7 @@ from argparse import ArgumentParser, FileType
 from binascii import unhexlify
 from os.path import basename, dirname, join as joinpath, normpath
 from re import match as re_match
-from traceback import format_exc
+from traceback import format_exception
 from typing import Optional
 import sys
 
@@ -20,10 +20,34 @@ QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
                        'python', 'qemu')
 sys.path.append(QEMU_PYPATH)
 
-from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap,
+# ruff: noqa: E402
+_EXC: Optional[Exception] = None
+try:
+    from ot.lc_ctrl.tools import LifeCycleTokenEngine, LifeCycleTokenPair
+except ModuleNotFoundError as exc:
+    _EXC = exc
+from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap, OtpPartition,
                     OtpPartitionDesc, OtpRegisterDef)
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt, to_bool
+
+
+def parse_lc_token(tkdesc: str) -> tuple[str, 'LifeCycleTokenPair']:
+    """Parse a Rust file for a LC token and return its name and VALUE
+
+       :param tkdesc: argument parser input string
+       :return: a 2-uple of OTP map token name and LifeCycleTokenPair
+    """
+    token_desc, token_val = tkdesc.split('=', 1)
+    token_name = token_desc.upper()
+    tkeng = LifeCycleTokenEngine()
+    try:
+        tktext = unhexlify(token_val)
+        if len(tktext) != tkeng.TOKEN_LENGTH:
+            raise ValueError()
+    except ValueError as exc:
+        raise ValueError(f"No valid token '{token_name}'") from exc
+    return token_name, tkeng.build_from_text(tktext)
 
 
 def main():
@@ -106,6 +130,9 @@ def main():
                               help='set a bit at specified location')
         commands.add_argument('--toggle-bit', action='append',  default=[],
                               help='toggle a bit at specified location')
+        commands.add_argument('--patch-token', action='append',
+                              metavar='NAME=VALUE', default=[],
+                              help='change a LC hashed token, using Rust file')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -158,18 +185,11 @@ def main():
         if not args.otp_map:
             if args.generate in ('PARTS', 'REGS'):
                 argparser.error('Generator requires an OTP map')
-            if args.show:
-                argparser.error('Cannot decode OTP values without an OTP map')
-            if args.digest:
-                argparser.error('Cannot verify OTP digests without an OTP map')
-            if args.empty:
-                argparser.error('Cannot empty OTP partition without an OTP map')
-            if args.change:
-                argparser.error('Cannot change an OTP field without an OTP map')
-            if args.erase:
-                argparser.error('Cannot erase an OTP field without an OTP map')
-            if args.fix_digest:
-                argparser.error('Cannot generate HW digest without an OTP map')
+            for feat in ('show', 'digest', 'empty', 'change', 'erase',
+                         'fix_digest', 'patch_token'):
+                if not getattr(args, feat):
+                    continue
+                argparser.error('Specified option requires an OTP map')
         else:
             otpmap = OtpMap()
             otpmap.load(args.otp_map)
@@ -216,6 +236,7 @@ def main():
                 otp.verify_ecc(args.ecc_recover)
 
         if otp.loaded:
+
             if not otp.is_opentitan:
                 ot_opts = ('iv', 'constant', 'digest', 'generate', 'otp_map',
                            'lifecycle')
@@ -228,6 +249,7 @@ def main():
             if args.empty:
                 for part in args.empty:
                     otp.empty_partition(part)
+
             for field_desc in args.erase:
                 try:
                     part, field = field_desc.split(':')
@@ -238,6 +260,7 @@ def main():
                                     '<PART>:<FIELD> syntax')
                 otp.erase_field(part, field)
                 check_update = True
+
             for chg_desc in args.change:
                 try:
                     fdesc, value = chg_desc.split('=')
@@ -271,12 +294,47 @@ def main():
                             argparser.error(f'Unknown value type: {value}')
                 otp.change_field(part, field, value)
                 check_update = True
+
             if args.config:
                 otp.load_config(args.config)
+
             if args.iv:
                 otp.set_digest_iv(args.iv)
+
             if args.constant:
                 otp.set_digest_constant(args.constant)
+
+            token_parts: set[OtpPartition] = set()
+
+            if args.patch_token and _EXC:
+                if debug:
+                    print(''.join(format_exception(_EXC, chain=False)),
+                          file=sys.stderr)
+                argparser.error(f'Missing PYTHONPATH: {_EXC}')
+            for tkdesc in args.patch_token:
+                if '=' not in tkdesc:
+                    argparser.error(f"Invalid token syntax: '{tkdesc}'")
+                token, value = parse_lc_token(tkdesc)
+                token_name = f'{token}_TOKEN'
+                token_parts = otpmap.find_field(token_name)
+                if len(token_parts) == 0:
+                    argparser.error(f"No such token '{token}' in OTP map")
+                if len(token_parts) > 1:
+                    argparser.error(
+                        f"Token '{token}' found in multiple partitions "
+                        f"{', '.join(p.name for p in token_parts)}")
+                part = token_parts[0]
+                # no sure why we need to revert the bytes here
+                # could be due to any other inversion in any other piece of SW
+                # ...
+                token_hash = bytes(reversed(value.hashed))
+                otp.change_field(part.name, token_name, token_hash)
+                if part.is_locked:
+                    token_parts.add(part.name)
+                check_update = True
+            for part in token_parts:
+                otp.build_digest(part.name, True)
+
             if args.digest or args.fix_digest:
                 if not otp.has_present_constants:
                     if args.raw and otp.version == 1:
@@ -287,16 +345,23 @@ def main():
                     # image
                     argparser.error(f'Present scrambler constants are required '
                                     f'to handle the partition digest{msg}')
-            for part in args.fix_digest:
+            build_digest_parts = {p for p in args.fix_digest if p != 'tokens'}
+            if 'tokens' in args.fix_digest:
+                build_digest_parts.update((p.name for p in token_parts))
+            for part in build_digest_parts:
                 otp.build_digest(part, True)
                 check_update = True
+
             if lcext:
                 otp.load_lifecycle(lcext)
+
             if args.show:
                 otp.decode(not args.no_decode, args.wide, output,
                            not args.no_version, args.filter)
+
             if args.digest:
                 otp.verify(True)
+
             for pos, bitact in enumerate(bit_actions):
                 if alter_bits[pos]:
                     getattr(otp, f'{bitact}_bits')(alter_bits[pos])
@@ -321,7 +386,8 @@ def main():
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
         if debug:
-            print(format_exc(chain=False), file=sys.stderr)
+            print(''.join(format_exception(exc, chain=False)),
+                  file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         sys.exit(2)

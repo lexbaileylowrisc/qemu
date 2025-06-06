@@ -320,6 +320,18 @@ class OtpPartition:
         self._digest_bytes = bytes((a | b)
                                    for a, b in zip(self._digest_bytes, bdigest))
 
+    def has_field(self, field: str) -> bool:
+        """Tell whehther the partition has a field by its name.
+
+           :param field: the name of the field to locate
+           :return: true if the field is defined, false otherwise
+        """
+        try:
+            self._retrieve_properties(field)
+            return True
+        except ValueError:
+            return False
+
     def _retrieve_properties(self, field: str) -> tuple[int, int]:
         is_digest = self.has_digest and field.upper() == 'DIGEST'
         if not is_digest:

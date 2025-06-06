@@ -12,7 +12,8 @@ usage: otptool.py [-h] [-j HJSON] [-m VMEM] [-l SV] [-o FILE] [-r RAW]
                   [-g {LCVAL,LCTPL,PARTS,REGS}] [-F] [-G PART]
                   [--change PART:FIELD=VALUE] [--empty PARTITION]
                   [--erase PART:FIELD] [--clear-bit CLEAR_BIT]
-                  [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT] [-v] [-d]
+                  [--set-bit SET_BIT] [--toggle-bit TOGGLE_BIT]
+                  [--patch-token NAME=VALUE] [-v] [-d]
 
 QEMU OT tool to manage OTP files.
 
@@ -59,6 +60,8 @@ Commands:
   --set-bit SET_BIT     set a bit at specified location
   --toggle-bit TOGGLE_BIT
                         toggle a bit at specified location
+  --patch-token NAME=VALUE
+                        change a LC hashed token, using Rust file
 
 Extras:
   -v, --verbose         increase verbosity
@@ -196,6 +199,15 @@ Fuse RAW images only use the v1 type.
 * `--erase` reset a specific field within a partition. The flag may be repeated.
 
 * `--no-version` disable OTP image version reporting when `-s` is used.
+
+* `--patch-token` patch a Life Cycle hashed token. This feature is primary aimed at testing the
+  Life Cycle controller. With this option, the partition to update is automatically found using
+  the token `NAME`. If the partition containing the token to update is already locked, its digest is
+  automatically patched; otherwise the digest is left empty. The token `VALUE` should be specified
+  as a hexadecimal string with no `0x` prefix. The token value is expected to be the plaintext
+  token, as the script takes care of hashing it and storing the hashed value into the OTP image.
+  To change a LC token file with an immediate value with no further processing, see the `--change`
+  option.
 
 * `--set-bit` sets the specified bit in the OTP data. This flag may be repeated. This option is
    only intended to corrupt the OTP content so that HW & SW behavior may be exercised should such
