@@ -21,7 +21,7 @@ QEMU_PYPATH = joinpath(dirname(dirname(dirname(normpath(__file__)))),
 sys.path.append(QEMU_PYPATH)
 
 from ot.otp import (OtpImage, OtpLifecycleExtension, OtpMap,
-                    OTPPartitionDesc, OTPRegisterDef)
+                    OtpPartitionDesc, OtpRegisterDef)
 from ot.util.log import configure_loggers
 from ot.util.misc import HexInt, to_bool
 
@@ -153,7 +153,7 @@ def main():
 
         otpmap: Optional[OtpMap] = None
         lcext: Optional[OtpLifecycleExtension] = None
-        partdesc: Optional[OTPPartitionDesc] = None
+        partdesc: Optional[OtpPartitionDesc] = None
 
         if not args.otp_map:
             if args.generate in ('PARTS', 'REGS'):
@@ -185,11 +185,11 @@ def main():
         if not args.generate:
             pass
         elif args.generate == 'PARTS':
-            partdesc = OTPPartitionDesc(otpmap)
+            partdesc = OtpPartitionDesc(otpmap)
             partdesc.save(basename(args.otp_map.name), basename(sys.argv[0]),
                           output)
         elif args.generate == 'REGS':
-            regdef = OTPRegisterDef(otpmap)
+            regdef = OtpRegisterDef(otpmap)
             regdef.save(basename(args.otp_map.name), basename(sys.argv[0]),
                         output)
         elif args.generate == 'LCVAL':

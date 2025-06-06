@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .map import OtpMap
 
 
-class OTPPartitionDesc:
+class OtpPartitionDesc:
     """OTP Partition descriptor generator."""
 
     ATTRS = {
@@ -111,7 +111,7 @@ class OTPPartitionDesc:
         assert False, 'Unknown RLOCK type'
 
 
-class OTPRegisterDef:
+class OtpRegisterDef:
     """OTP Partition register generator."""
 
     def __init__(self, otpmap: 'OtpMap'):
