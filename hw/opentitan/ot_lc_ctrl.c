@@ -562,7 +562,11 @@ static const OtLcCtrlTransitionDesc TRANSITION_DESC[LC_CTRL_TRANS_COUNT] = {
          "?")
 
 #define LC_FSM_CHANGE_STATE(_s_, _st_) \
-    ot_lc_ctrl_change_state_line(_s_, _st_, __LINE__)
+    do { \
+        if (ot_lc_ctrl_change_state_line(_s_, _st_, __LINE__)) { \
+            ot_lc_ctrl_update_broadcast(_s_); \
+        } \
+    } while (0)
 
 #define LC_TOKEN_NAME(_tk_) \
     (((unsigned)(_tk_)) < ARRAY_SIZE(LC_TOKEN_NAMES) ? \
@@ -721,13 +725,17 @@ static const char *ot_lc_ctrl_hexdump(const void *data, size_t size)
 
 static void ot_lc_ctrl_resume_transition(OtLcCtrlState *s);
 
-static void
+static bool
 ot_lc_ctrl_change_state_line(OtLcCtrlState *s, OtLcCtrlFsmState state, int line)
 {
     trace_ot_lc_ctrl_change_state(s->ot_id, line, LC_FSM_STATE_NAME(s->state),
                                   s->state, LC_FSM_STATE_NAME(state), state);
 
+    bool change = s->state != state;
+
     s->state = state;
+
+    return change;
 }
 
 static void ot_lc_ctrl_update_alerts(OtLcCtrlState *s)
@@ -1383,8 +1391,12 @@ static void ot_lc_ctrl_start_transition(OtLcCtrlState *s)
     case LC_STATE_TESTLOCKED6:
     case LC_STATE_TESTUNLOCKED7:
     case LC_STATE_RMA:
-        trace_ot_lc_ctrl_info(s->ot_id, "External clock enabled");
-        s->regs[R_STATUS] |= R_STATUS_EXT_CLOCK_SWITCHED_MASK;
+        if (s->ext_clock_en) {
+            trace_ot_lc_ctrl_info(s->ot_id, "using external clock");
+            s->regs[R_STATUS] |= R_STATUS_EXT_CLOCK_SWITCHED_MASK;
+        } else {
+            trace_ot_lc_ctrl_info(s->ot_id, "using default clock");
+        }
         break;
     default:
         break;
