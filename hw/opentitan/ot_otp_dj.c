@@ -546,11 +546,20 @@ REG32(LC_STATE, 16344u)
 #define REG_NAME(_reg_) \
     ((((_reg_) <= REGS_COUNT) && REG_NAMES[_reg_]) ? REG_NAMES[_reg_] : "?")
 
+/*
+ * The OTP may be used before any CPU is started, This may cause the default
+ * virtual clock to stall, as the hart does not execute. OTP nevertheless may
+ * be active, updating the OTP content where write delays are still needed.
+ * Use the alternative clock source which counts even when the CPU is stalled.
+ */
+#define OT_OTP_HW_CLOCK QEMU_CLOCK_VIRTUAL_RT
+
 /* the following delays are arbitrary for now */
 #define DAI_READ_DELAY_NS   100000u /* 100us */
 #define DAI_WRITE_DELAY_NS  1000000u /* 1ms */
 #define DAI_DIGEST_DELAY_NS 5000000u /* 5ms */
 #define LCI_PROG_DELAY_NS   500000u /* 500us*/
+#define LCI_PROG_SCHED_NS   1000u /* 1us*/
 
 #define SRAM_KEY_SEED_WIDTH (SRAM_DATA_KEY_SEED_SIZE * 8u)
 #define KEY_MGR_KEY_WIDTH   256u
@@ -737,8 +746,7 @@ typedef struct {
 } OtOTPDAIController;
 
 typedef struct {
-    QEMUTimer *prog_delay; /* OTP cell prog delay */
-    QEMUBH *prog_bh; /* OTP prog trigger */
+    QEMUTimer *prog_delay; /* OTP cell prog delay (use OT_OTP_HW_CLOCK) */
     OtOTPLCIState state;
     OtOTPError error;
     ot_otp_program_ack_fn ack_fn;
@@ -3377,7 +3385,8 @@ static bool ot_otp_dj_program_req(OtOTPState *s, const uint16_t *lc_tcount,
      * schedule even if LCI FSM is already in error to report the issue
      * asynchronously
      */
-    qemu_bh_schedule(lci->prog_bh);
+    timer_mod(lci->prog_delay,
+              qemu_clock_get_ns(OT_OTP_HW_CLOCK) + LCI_PROG_SCHED_NS);
 
     return true;
 }
@@ -3522,7 +3531,7 @@ static void ot_otp_dj_lci_write_word(void *opaque)
     lci->hpos += 1;
 
     timer_mod(lci->prog_delay,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + LCI_PROG_DELAY_NS);
+              qemu_clock_get_ns(OT_OTP_HW_CLOCK) + LCI_PROG_DELAY_NS);
 
     LCI_CHANGE_STATE(s, OTP_LCI_WRITE_WAIT);
 }
@@ -3986,7 +3995,6 @@ static void ot_otp_dj_reset_enter(Object *obj, ResetType type)
     }
 
     qemu_bh_cancel(s->dai->digest_bh);
-    qemu_bh_cancel(s->lci->prog_bh);
     qemu_bh_cancel(s->lc_broadcast.bh);
     qemu_bh_cancel(s->pwr_otp_bh);
 
@@ -4140,8 +4148,7 @@ static void ot_otp_dj_init(Object *obj)
     s->dai->delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_dai_complete, s);
     s->dai->digest_bh = qemu_bh_new(&ot_otp_dj_dai_write_digest, s);
     s->lci->prog_delay =
-        timer_new_ns(OT_VIRTUAL_CLOCK, &ot_otp_dj_lci_write_word, s);
-    s->lci->prog_bh = qemu_bh_new(&ot_otp_dj_lci_write_word, s);
+        timer_new_ns(OT_OTP_HW_CLOCK, &ot_otp_dj_lci_write_word, s);
     s->pwr_otp_bh = qemu_bh_new(&ot_otp_dj_pwr_otp_bh, s);
     s->lc_broadcast.bh = qemu_bh_new(&ot_otp_dj_lc_broadcast_bh, s);
     s->keygen->entropy_bh = qemu_bh_new(&ot_otp_dj_request_entropy_bh, s);
