@@ -152,8 +152,8 @@ class LifeCycleController:
     @property
     def volatile_raw_unlock(self) -> bool:
         """Report whether volatile unlock is enabled."""
-        reg = 'volatile_raw_unlock'
-        vru = bool(self._read_reg(reg) & 0b1)
+        reg = 'transition_ctrl'
+        vru = bool(self._read_reg(reg) & 0b10)
         return vru
 
     @volatile_raw_unlock.setter
