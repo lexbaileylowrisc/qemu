@@ -874,6 +874,9 @@ static void ot_ibex_wrapper_update_exec(OtIbexWrapperState *s)
         }
         cpu_resume(s->cpu);
     } else {
+        if (!s->cpu->held_in_reset) {
+            resettable_assert_reset(OBJECT(s->cpu), RESET_TYPE_COLD);
+        }
         if (!s->cpu->halted) {
             s->cpu->halted = 1;
             cpu_exit(s->cpu);
