@@ -735,7 +735,7 @@ ot_lc_ctrl_change_state_line(OtLcCtrlState *s, OtLcCtrlFsmState state, int line)
 
     s->state = state;
 
-    return change;
+    return change || state == ST_IDLE;
 }
 
 static void ot_lc_ctrl_update_alerts(OtLcCtrlState *s)
@@ -1356,7 +1356,7 @@ static void ot_lc_ctrl_start_transition(OtLcCtrlState *s)
                 s->regs[R_STATUS] |= R_STATUS_TRANSITION_SUCCESSFUL_MASK;
                 trace_ot_lc_ctrl_info(s->ot_id, "Successful volatile unlock");
                 s->regs[R_STATUS] |= R_STATUS_READY_MASK;
-                /* FSM state is kept in IDLE */
+                LC_FSM_CHANGE_STATE(s, ST_IDLE);
             } else {
                 trace_ot_lc_ctrl_error(s->ot_id,
                                        "Invalid volatile unlock token");
