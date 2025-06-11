@@ -1512,41 +1512,46 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
     uint64_t mask = 1u;
     for (; hix < hcount; hix++, mask <<= 1u) {
         RISCVDMHartState *hart = &dm->harts[hix];
-#ifdef TRACE_CPU_STATES
         CPUState *cs;
         g_assert(hart->cpu);
         cs = CPU(hart->cpu);
-#endif
-        if (hart->resumed) {
-            resumeack += 1;
-        }
-        if (hart->have_reset) {
-            havereset += 1;
-        }
         if (dm->nonexistent_bm & mask) {
             nonexistent += 1;
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "nonexistent");
+            continue;
+        }
+        /*
+         * The hart may have been started since last poll. There is no way
+         * for the hart to inform the DM in this case, so rely on polling
+         * for now.
+         */
+        if (cs->held_in_reset) {
+            hart->resumed = false;
+            hart->halted = false;
+            dm->unavailable_bm |= mask;
+            dm->nonexistent_bm &= ~mask;
+            unavail += 1;
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "unavailable");
             continue;
         }
         if (dm->unavailable_bm & mask) {
-            /*
-             * The hart may have been started since last poll. There is no way
-             * for the hart to inform the DM in this case, so rely on polling
-             * for now.
-             */
-            if (CPU(hart->cpu)->halted) {
-                unavail += 1;
-                continue;
-            }
-#ifdef TRACE_CPU_STATES
-            qemu_log("%s: %s: became available %p: %u\n", __func__, dm->soc, cs,
-                     cs->cpu_index);
-#endif
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "became available");
             /* clear the unavailability flag and resume w/ "regular" states */
             dm->unavailable_bm &= ~mask;
         }
+        if (hart->resumed) {
+            resumeack += 1;
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "resumed");
+        }
+        if (hart->have_reset) {
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "have reset");
+            havereset += 1;
+        }
         if (hart->halted) {
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "halted");
             halted += 1;
         } else {
+            trace_riscv_dm_status(dm->soc, cs->cpu_index, "running");
             running += 1;
         }
         mask <<= 1u;
