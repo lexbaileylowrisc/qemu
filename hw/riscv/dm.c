@@ -1267,9 +1267,9 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
             CPUState *cs = CPU(hart->cpu);
 
             if (value & R_DMCONTROL_HARTRESET_MASK) {
-                if (!cs->held_in_reset) {
-                    trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
-                                              dm->hart->hartid, "assert");
+                trace_riscv_dm_hart_reset(dm->soc, cs->cpu_index,
+                                          dm->hart->hartid, "assert");
+                if (!cs->disabled) {
                     if (hart->unlock_reset) {
                         /*
                          * if hart is started in active reset, prevent from
@@ -1283,7 +1283,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
                     }
                 }
             } else {
-                if (cs->held_in_reset) {
+                if (cs->disabled) {
                     if (hart->unlock_reset) {
                         /*
                          * if hart is started in active reset, prevent from
@@ -1301,7 +1301,7 @@ static CmdErr riscv_dm_dmcontrol_write(RISCVDMState *dm, uint32_t value)
             }
 
             if (dm->unavailable_bm & hbit) {
-                if (!cs->held_in_reset) {
+                if (!cs->disabled) {
                     /* hart exited from reset, became available */
                     dm->unavailable_bm &= ~hbit;
                     hart->have_reset = true;
@@ -1525,7 +1525,7 @@ static CmdErr riscv_dm_dmstatus_read(RISCVDMState *dm, uint32_t *value)
          * for the hart to inform the DM in this case, so rely on polling
          * for now.
          */
-        if (cs->held_in_reset) {
+        if (cs->disabled) {
             hart->resumed = false;
             hart->halted = false;
             dm->unavailable_bm |= mask;
@@ -2396,7 +2396,7 @@ static void riscv_dm_ensure_running(RISCVDMState *dm)
         vm_start();
     }
 
-    if (cs->stopped && !cs->held_in_reset) {
+    if (cs->stopped && !cs->disabled) {
         cpu_resume(cs);
     }
 }
@@ -2501,7 +2501,7 @@ static int riscv_dm_discover_cpus(RISCVDMState *dm)
             g_assert(hart->cpu == cpu);
         }
         hart->hartid = hart->cpu->env.mhartid;
-        hart->unlock_reset = !cs->held_in_reset;
+        hart->unlock_reset = !cs->disabled;
         if (!dm->as) {
             /* address space is unknown till first hart is realized */
             dm->as = cs->as;
@@ -2636,7 +2636,7 @@ static void riscv_dm_reset_exit(Object *obj, ResetType type)
 
         CPUState *cs = CPU(cpu);
         if (cs->halted) {
-            if (cs->held_in_reset) {
+            if (cs->disabled) {
                 dm->unavailable_bm |= 1u << ix;
                 trace_riscv_dm_unavailable(dm->soc, cs->cpu_index);
                 /* a hart cannot be halted and unavailable at once */
