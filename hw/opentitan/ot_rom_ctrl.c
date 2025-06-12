@@ -156,6 +156,7 @@ struct OtRomCtrlState {
     unsigned recovered_error_count;
     unsigned unrecoverable_error_count;
     bool first_reset;
+    bool loaded;
 
     char *ot_id;
     uint32_t size;
@@ -1078,8 +1079,11 @@ static void ot_rom_ctrl_reset_hold(Object *obj, ResetType type)
         c->parent_phases.hold(obj, type);
     }
 
+    s->loaded = false;
+
     /* reset all registers on first reset, otherwise keep digests */
     if (s->first_reset) {
+        memset(memory_region_get_ram_ptr(&s->mem), 0, s->size);
         memset(s->regs, 0, REGS_SIZE);
     } else {
         s->regs[R_ALERT_TEST] = 0;
@@ -1095,42 +1099,40 @@ static void ot_rom_ctrl_reset_hold(Object *obj, ResetType type)
                     ot_rom_ctrl_handle_kmac_response, s);
 }
 
-static void ot_rom_ctrl_reset_exit(Object *obj, ResetType type)
+static void ot_rom_ctrl_set_load(Object *obj, bool value, Error **errp)
 {
-    OtRomCtrlClass *c = OT_ROM_CTRL_GET_CLASS(obj);
     OtRomCtrlState *s = OT_ROM_CTRL(obj);
-    uint8_t *rom_ptr = (uint8_t *)memory_region_get_ram_ptr(&s->mem);
+    (void)errp;
 
-    if (c->parent_phases.exit) {
-        c->parent_phases.exit(obj, type);
+    if (!value) {
+        return;
     }
 
-    bool notify = true;
+    if (!s->loaded) {
+        s->loaded = true;
 
-    /* on initial reset, load ROM then set it read-only */
-    if (s->first_reset) {
-        /* pre-fill ROM region with zeros */
-        memset(rom_ptr, 0, s->size);
+        bool notify = true;
 
-        /* load ROM from file */
-        bool dig = ot_rom_ctrl_load_rom(s);
+        /* on initial reset, load ROM then set it read-only */
+        if (s->first_reset) {
+            /* load ROM from file */
+            bool dig = ot_rom_ctrl_load_rom(s);
 
-        /* ensure ROM can no longer be written */
-        s->first_reset = false;
+            /* ensure ROM can no longer be written */
+            s->first_reset = false;
 
-        if (!dig) {
-            ot_rom_ctrl_fake_digest(s);
+            if (!dig) {
+                ot_rom_ctrl_fake_digest(s);
+            }
+
+            notify = !dig;
         }
 
-        notify = !dig;
+        if (notify) {
+            /* compare existing digests and send notification to pwrmgr */
+            ot_rom_ctrl_compare_and_notify(s);
+        }
     }
-
-    if (notify) {
-        /* compare existing digests and send notification to pwrmgr */
-        ot_rom_ctrl_compare_and_notify(s);
-    }
-
-    trace_ot_rom_ctrl_reset(s->ot_id, "exit");
 }
 
 static void ot_rom_ctrl_realize(DeviceState *dev, Error **errp)
@@ -1202,6 +1204,9 @@ static void ot_rom_ctrl_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 
     fifo8_create(&s->hash_fifo, OT_KMAC_APP_MSG_BYTES);
+
+    object_property_add_bool(obj, "load", NULL, &ot_rom_ctrl_set_load);
+    object_property_set_description(obj, "load", "Trigger initial ROM loading");
 }
 
 static void ot_rom_ctrl_class_init(ObjectClass *klass, void *data)
@@ -1212,8 +1217,7 @@ static void ot_rom_ctrl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     ResettableClass *rc = RESETTABLE_CLASS(dc);
 
-    resettable_class_set_parent_phases(rc, NULL, &ot_rom_ctrl_reset_hold,
-                                       &ot_rom_ctrl_reset_exit,
+    resettable_class_set_parent_phases(rc, NULL, &ot_rom_ctrl_reset_hold, NULL,
                                        &rcc->parent_phases);
     dc->realize = &ot_rom_ctrl_realize;
     device_class_set_props(dc, ot_rom_ctrl_properties);
