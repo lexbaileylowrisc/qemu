@@ -677,7 +677,7 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 static inline bool cpu_handle_halt(CPUState *cpu)
 {
 #ifndef CONFIG_USER_ONLY
-    if (unlikely(cpu->held_in_reset)) {
+    if (unlikely(cpu->disabled)) {
         return true;
     }
 

@@ -321,7 +321,7 @@ int vm_shutdown(void)
 
 bool cpu_can_run(CPUState *cpu)
 {
-    if (cpu->stop) {
+    if (cpu->stop || unlikely(cpu->disabled)) {
         return false;
     }
     if (cpu_is_stopped(cpu)) {
@@ -878,4 +878,3 @@ void qmp_inject_nmi(Error **errp)
 {
     nmi_monitor_handle(monitor_get_cpu_index(monitor_cur()), errp);
 }
-

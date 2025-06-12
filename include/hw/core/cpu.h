@@ -485,8 +485,8 @@ struct CPUState {
 
     /* Should CPU start in powered-off state? */
     bool start_powered_off;
-    /* Is CPU currently held in reset? */
-    bool held_in_reset;
+    /* Is CPU currently currently disabled? */
+    bool disabled;
 
     bool unplug;
     bool crash_occurred;

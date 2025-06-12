@@ -120,7 +120,6 @@ static void cpu_common_reset_enter(Object *obj, ResetType type)
 {
     CPUState *cpu = CPU(obj);
     CPUClass *cc = CPU_GET_CLASS(cpu);
-    cpu->held_in_reset = true;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
         qemu_log("CPU Reset Enter (CPU %d)\n", cpu->cpu_index);
@@ -131,7 +130,6 @@ static void cpu_common_reset_enter(Object *obj, ResetType type)
 static void cpu_common_reset_exit(Object *obj, ResetType type)
 {
     CPUState *cpu = CPU(obj);
-    cpu->held_in_reset = false;
 
     if (qemu_loglevel_mask(CPU_LOG_RESET)) {
         CPUClass *cc = CPU_GET_CLASS(cpu);
