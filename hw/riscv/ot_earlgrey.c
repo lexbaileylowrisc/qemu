@@ -1401,16 +1401,9 @@ static void ot_eg_soc_reset_hold(Object *obj, ResetType type)
     resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_DM]), type);
     resettable_reset(OBJECT(s->devices[OT_EG_SOC_DEV_VMAPPER]), type);
 
-    /* keep ROM_CTRL in reset, we'll release it last */
-    resettable_assert_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]), type);
-
     /*
-     * Power-On-Reset: leave hart on reset
+     * Power-On-Reset: leave hart disabled on reset
      * PowerManager takes care of managing Ibex reset when ready
-     *
-     * Note that an initial, extra single reset cycle (assert/release) is
-     * performed from the generic #riscv_cpu_realize function on machine
-     * realization.
      */
     CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
     cs->disabled = 1;
@@ -1425,8 +1418,9 @@ static void ot_eg_soc_reset_exit(Object *obj, ResetType type)
         c->parent_phases.exit(obj, type);
     }
 
-    /* let ROM_CTRL get out of reset now */
-    resettable_release_reset(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]), type);
+    /* Kick off ROM check and boot */
+    object_property_set_bool(OBJECT(s->devices[OT_EG_SOC_DEV_ROM_CTRL]), "load",
+                             true, &error_fatal);
 }
 
 static void
