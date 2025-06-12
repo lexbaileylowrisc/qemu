@@ -816,12 +816,12 @@ static void hmp_info_ibex(Monitor *mon, const QDict *qdict)
             pc = -1;
             symbol = "?";
         }
-        if (cpu->halted && cpu->held_in_reset) {
-            cpu_state = " [HR]";
+        if (cpu->halted && cpu->disabled) {
+            cpu_state = " [HD]";
         } else if (cpu->halted) {
             cpu_state = " [H]";
-        } else if (cpu->held_in_reset) {
-            cpu_state = " [R]";
+        } else if (cpu->disabled) {
+            cpu_state = " [D]";
         } else {
             cpu_state = "";
         }
