@@ -865,22 +865,15 @@ static void ot_ibex_wrapper_update_exec(OtIbexWrapperState *s)
     CPUState *cs = s->cpu;
     g_assert(cs);
     trace_ot_ibex_wrapper_update_exec(s->ot_id ?: "", s->cpu_en_bm, s->esc_rx,
-                                      cs->halted, cs->held_in_reset, enable);
+                                      cs->halted, cs->disabled, enable);
 
     if (enable) {
         cs->halted = 0;
-        if (s->cpu->held_in_reset) {
-            resettable_release_reset(OBJECT(s->cpu), RESET_TYPE_COLD);
-        }
-        cpu_resume(s->cpu);
+        cs->disabled = false;
+        cpu_resume(cs);
     } else {
-        if (!s->cpu->held_in_reset) {
-            resettable_assert_reset(OBJECT(s->cpu), RESET_TYPE_COLD);
-        }
-        if (!s->cpu->halted) {
-            s->cpu->halted = 1;
-            cpu_exit(s->cpu);
-        }
+        cs->disabled = true;
+        cpu_pause(cs);
     }
 }
 
