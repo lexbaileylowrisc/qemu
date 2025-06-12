@@ -1580,7 +1580,7 @@ static void ot_dj_soc_reset_hold(Object *obj, ResetType type)
      * realization.
      */
     CPUState *cs = CPU(s->devices[OT_DJ_SOC_DEV_HART]);
-    resettable_assert_reset(OBJECT(cs), type);
+    cs->disabled = 1;
 }
 
 static void ot_dj_soc_reset_exit(Object *obj, ResetType type)
