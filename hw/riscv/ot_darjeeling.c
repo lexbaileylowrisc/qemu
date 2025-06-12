@@ -1547,6 +1547,7 @@ static void ot_dj_soc_hw_reset(void *opaque, int irq, int level)
         CPUState *cs = CPU(s->devices[OT_DJ_SOC_DEV_HART]);
         cpu_synchronize_state(cs);
         bus_cold_reset(sysbus_get_default());
+        resettable_reset(OBJECT(cs), RESET_TYPE_COLD);
         cpu_synchronize_post_reset(cs);
     }
 }
@@ -1565,7 +1566,6 @@ static void ot_dj_soc_reset_hold(Object *obj, ResetType type)
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DTM]), type);
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_DM]), type);
     resettable_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_VMAPPER]), type);
-
 
     /* keep ROM_CTRLs in reset, we'll release them last */
     resettable_assert_reset(OBJECT(s->devices[OT_DJ_SOC_DEV_ROM0]), type);

@@ -1383,6 +1383,7 @@ static void ot_eg_soc_hw_reset(void *opaque, int irq, int level)
         CPUState *cs = CPU(s->devices[OT_EG_SOC_DEV_HART]);
         cpu_synchronize_state(cs);
         bus_cold_reset(sysbus_get_default());
+        resettable_reset(OBJECT(cs), RESET_TYPE_COLD);
         cpu_synchronize_post_reset(cs);
     }
 }
