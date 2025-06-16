@@ -112,7 +112,8 @@ Extras:
 * `-v` can be repeated to increase verbosity of the script, mostly for debug purpose.
 
 * `-w` pause execution on start up before communication with the remote DTM. This enables QEMU VM
-  to initialize and boot the guest SW before attempting a communication.
+  to initialize and boot the guest SW before attempting a communication. It can be repeated once,
+  the second value being used to delay the termination of the VM when the `-t` option is used.
 
 * `-X` do not attempt to resume normal execution of the hart once DTM operation have been completed.
   This can be useful for example when the QEMU VM is started with `-S` and no application code has

@@ -76,6 +76,7 @@ def main():
         qvm.add_argument('-t', '--terminate', action='store_true',
                          help='terminate QEMU when done')
         qvm.add_argument('-w', '--idle', type=float, metavar='DELAY',
+                         action='append',
                          help='stay idle before interacting with DTM')
         dmi = argparser.add_argument_group(title='DMI')
         dmi.add_argument('-l', '--ir-length', type=int,
@@ -179,8 +180,8 @@ def main():
         rvdm = None
 
         if args.idle:
-            log.info('Idling for %.1f seconds', args.idle)
-            sleep(args.idle)
+            log.info('Idling for %.1f seconds', args.idle[0])
+            sleep(args.idle[0])
 
         try:
             if args.info:
@@ -295,6 +296,9 @@ def main():
                     argparser.error('Cannot execute without loaded an ELF file')
         finally:
             if args.terminate:
+                if len(args.idle or []) > 1:
+                    log.info('Idling for %.1f seconds', args.idle[1])
+                    sleep(args.idle[1])
                 ctrl.quit()
 
     # pylint: disable=broad-except
