@@ -190,7 +190,7 @@ class DebugModule:
 
     def initialize(self) -> None:
         """Initialize the debug module."""
-        self._log.info('Initialize')
+        self._log.debug('Initialize')
         btf = self.BITFIELDS['DMCONTROL']
         self.dmcontrol = 0
         enable = btf.encode(dmactive=True)
