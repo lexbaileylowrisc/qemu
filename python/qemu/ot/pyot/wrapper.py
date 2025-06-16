@@ -7,7 +7,8 @@
 """
 
 from collections import deque
-from os.path import basename, dirname
+from os import environ, unlink
+from os.path import basename, dirname, isfile, join as joinpath
 from select import POLLIN, POLLERR, POLLHUP, poll as spoll
 from socket import socket, timeout as LegacyTimeoutError
 from subprocess import Popen, PIPE, TimeoutExpired
@@ -55,6 +56,9 @@ class QEMUWrapper:
     NO_MATCH_RETURN_CODE = 100
     """Return code when no matching string is found in guest output."""
 
+    ASAN_LOGFILE_PREFIX = 'asan.log'
+    """Address sanitizer log prefix."""
+
     def __init__(self, log_classifiers: dict[str, list[str]], debug: bool):
         self._log_classifiers = log_classifiers
         self._debug = debug
@@ -85,6 +89,8 @@ class QEMUWrapper:
                            expression.
                 - start_delay, the delay to wait before starting the execution
                            of the context once QEMU command has been started.
+                - asan, whether to redirect and post-process AddressSanitizer
+                           output log
            :return: a 3-uple of exit code, execution time, and last guest error
         """
         # stdout and stderr belongs to QEMU VM
@@ -119,13 +125,24 @@ class QEMUWrapper:
         last_error = ''
         vcp_map = tdef.vcp_map
         vcp_ctxs: dict[int, list[str, socket, bytearray, logging.Logger]] = {}
+        asan_file = None
         try:
             workdir = dirname(tdef.command[0])
             log.debug('Executing QEMU as %s', ' '.join(tdef.command))
+            env = dict(environ)
+            if tdef.asan:
+                # note cannot use a QEMUFileManager temp file here, as the full
+                # pathname is built by the ASAN tool once QEMU has started.
+                # store this temporary file in the QEMUFileManager-managed
+                # work directory
+                asan_prefix = joinpath(workdir, self.ASAN_LOGFILE_PREFIX)
+                env['ASAN_OPTIONS'] = f'log_path={asan_prefix}'
+            else:
+                asan_prefix = None
             # pylint: disable=consider-using-with
             proc = Popen(tdef.command, bufsize=1, cwd=workdir, stdout=PIPE,
                          stderr=PIPE, encoding='utf-8', errors='ignore',
-                         text=True)
+                         text=True, env=env)
             try:
                 proc.wait(0.1)
             except TimeoutExpired:
@@ -135,6 +152,8 @@ class QEMUWrapper:
                 log.error('QEMU bailed out: %d for "%s"', ret, tdef.test_name)
                 raise OSError()
             log.debug('Execute QEMU for %.0f secs', tdef.timeout)
+            if asan_prefix:
+                asan_file = f'{asan_prefix}.{proc.pid}'
             # unfortunately, subprocess's stdout calls are blocking, so the
             # only way to get near real-time output from QEMU is to use a
             # dedicated thread that may block whenever no output is available
@@ -328,6 +347,8 @@ class QEMUWrapper:
                         line = line.strip()
                         if line:
                             logger(line)
+            if asan_file:
+                self._post_process_asan(asan_file)
         xtime = ExecTime(xend-xstart) if xstart and xend else 0.0
         return abs(ret) or 0, xtime, last_error
 
@@ -404,3 +425,25 @@ class QEMUWrapper:
         # any other case
         self._log.debug('No match, using defaut code')
         return self.NO_MATCH_RETURN_CODE
+
+    def _post_process_asan(self, asan_file: str):
+        alog = logging.getLogger('pyot.asan')
+        try:
+            if not isfile(asan_file):
+                raise ValueError('ASAN output lost')
+            with open(asan_file, 'rt') as afp:
+                asan = afp.read()
+            # 3 following messages are useless, discard them
+            for aline in asan.split('\n'):
+                if aline.find('ASan is ignoring requested') >= 0:
+                    continue
+                if aline.find('False positive error reports may follow') >= 0:
+                    continue
+                if aline.find('https://github.com') >= 0:
+                    continue
+                if not aline:
+                    continue
+                alog.error(aline.rstrip())
+            unlink(asan_file)
+        except (OSError, ValueError) as exc:
+            self._qlog.error('Cannot process ASAN file: %s', exc)

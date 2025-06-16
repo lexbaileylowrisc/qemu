@@ -5,14 +5,14 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT] [-N LOG]
-               [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
+usage: pyot.py [-h] [-A] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT]
+               [-N LOG] [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
                [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON]
-               [-e BUS] [-f RAW] [-g file] [-K] [-l file] [-O RAW] [-o VMEM]
-               [-r ELF] [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z]
-               [-R] [-T FACTOR] [-Z] [-v] [-V] [-d] [--quiet] [--log-time]
-               [--log-udp UDP_PORT] [--debug LOGGER] [--info LOGGER]
-               [--warn LOGGER]
+               [-e BUS] [-f RAW] [-g file] [-H] [-K] [-l file] [-O RAW]
+               [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-V] [-d]
+               [--quiet] [--log-time] [--log-udp UDP_PORT] [--debug LOGGER]
+               [--info LOGGER] [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -20,6 +20,7 @@ options:
   -h, --help            show this help message and exit
 
 Virtual machine:
+  -A, --asan            Redirect address sanitizer error log stream
   -D, --start-delay DELAY
                         QEMU start up delay before initial comm
   -i, --icount ICOUNT   virtual instruction counter with 2^ICOUNT clock ticks
@@ -51,6 +52,9 @@ Files:
                         generate an eflash image file for MTD bus
   -f, --flash RAW       SPI flash image file
   -g, --otcfg file      configuration options for OpenTitan devices
+  -H, --no-flash-header
+                        application and/or bootloader files contain no OT
+                        header
   -K, --keep-tmp        Do not automatically remove temporary files and dirs
                         on exit
   -l, --loader file     ROM trampoline to execute, if any
@@ -93,6 +97,7 @@ This tool may be used in two ways, which can be combined:
 
 ### Virtual machine
 
+* `-A` / `--asan` filter address sanitizer traces and report them as log traces
 * `-D` / `--start-delay` VM start up delay. Grace period to wait for the VM to start up before
   attempting to communicate with its char devices.
 * `-i` / `--icount` to specify virtual instruction counter with 2^N clock ticks per instruction.
@@ -138,7 +143,8 @@ This tool may be used in two ways, which can be combined:
 * `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
    generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
 * `-g` / `--otcfg` specify a configuration file with OpenTitan configuration options, such as
-   cryptographic constants (seeds, keys, nonces, ...)
+   cryptographic constants (seeds, keys, nonces, ...).
+* `-H` / `--no-flash-header` executable files should be considered as raw files with no OpenTitan flash headers.
 * `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
   is in charge of discarding any generated files and directories after execution. The paths to the
   generated items are emitted as warning messages.

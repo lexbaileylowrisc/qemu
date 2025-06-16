@@ -67,6 +67,8 @@ def main():
         argparser = ArgumentParser(description=f'{desc}.')
         qvm = argparser.add_argument_group(title='Virtual machine')
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
+        qvm.add_argument('-A', '--asan', action='store_const', const=True,
+                         help='Redirect address sanitizer error log stream')
         qvm.add_argument('-D', '--start-delay', type=float, metavar='DELAY',
                          help='QEMU start up delay before initial comm')
         qvm.add_argument('-i', '--icount',

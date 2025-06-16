@@ -137,7 +137,8 @@ class QEMUExecuter:
                                                       DEFAULT_TIMEOUT_FACTOR)))
                 self._log.debug('Execute %s', basename(self._argdict['exec']))
                 adef = EasyDict(command=self._qemu_cmd, timeout=timeout,
-                                start_delay=self.DEFAULT_START_DELAY)
+                                start_delay=self.DEFAULT_START_DELAY,
+                                asan=self._argdict.get('asan', False))
                 ret, xtime, err = qot.run(adef)
                 results[ret] += 1
                 sret = self.RESULT_MAP.get(ret, ret)
@@ -482,6 +483,7 @@ class QEMUExecuter:
         if trigger and validate:
             raise ValueError(f"{getattr(args, 'exec', '?')}: 'trigger' and "
                              f"'validate' are mutually exclusive")
+        asan = getattr(args, 'asan', False)
         vcp_args, vcp_map = self._build_qemu_vcp_args(args)
         qemu_args.extend(vcp_args)
         qemu_args.extend(args.global_opts or [])
@@ -489,7 +491,7 @@ class QEMUExecuter:
             qemu_args.extend((str(o) for o in opts))
         return EasyDict(command=qemu_args, vcp_map=vcp_map,
                         tmpfiles=temp_files, start_delay=start_delay,
-                        trigger=trigger, validate=validate)
+                        trigger=trigger, validate=validate, asan=asan)
 
     def _build_qemu_test_command(self, filename: str) -> EasyDict[str, Any]:
         test_name = self.get_test_radix(filename)
