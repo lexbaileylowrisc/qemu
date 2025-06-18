@@ -338,6 +338,7 @@ void ot_common_configure_devices_with_id(
     }
     ot_common_configure_device_opts(devices, count);
     ibex_realize_devices(devices, bus, defs, count);
+    ibex_clock_devices(devices, defs, count);
     ibex_connect_devices(devices, defs, count);
 }
 
