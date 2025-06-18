@@ -380,6 +380,8 @@ static void ibexdemo_soc_realize(DeviceState *dev, Error **errp)
                              ARRAY_SIZE(ibexdemo_soc_devices));
     ibex_realize_system_devices(s->devices, ibexdemo_soc_devices,
                                 ARRAY_SIZE(ibexdemo_soc_devices));
+    ibex_clock_devices(s->devices, ibexdemo_soc_devices,
+                       ARRAY_SIZE(ibexdemo_soc_devices));
     ibex_connect_devices(s->devices, ibexdemo_soc_devices,
                          ARRAY_SIZE(ibexdemo_soc_devices));
 

@@ -105,6 +105,7 @@ config OT_EARLGREY
 config IBEXDEMO
     bool
     select IBEX
+    select IBEX_CLOCK_SRC
     select IBEX_COMMON
     select IBEXDEMO_GPIO
     select IBEXDEMO_SIMCTRL
