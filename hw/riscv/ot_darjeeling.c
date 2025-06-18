@@ -296,9 +296,6 @@ enum OtDjPinmuxMioOut {
 #define OT_DJ_DEBUG_LC_CTRL_SIZE  0x400u
 #define OT_DJ_DBG_XBAR_SIZE       0x4000u
 
-#define OT_DJ_PERIPHERAL_CLK_HZ 250000000u /* 250 MHz */
-#define OT_DJ_AON_CLK_HZ        62500000u /* 62.5 MHz */
-
 static const uint8_t ot_dj_pmp_cfgs[] = {
     /* clang-format off */
     IBEX_PMP_CFG(0, IBEX_PMP_MODE_OFF, 0, 0, 0),
@@ -438,8 +435,13 @@ static const uint32_t ot_dj_pmp_addrs[] = {
     OT_DJ_SOC_SIGNAL(OT_PINMUX_##_type_, _type_##_##_name_, _tgt_, \
                      OT_PINMUX_PAD, (_num_))
 
-#define OT_DJ_SOC_CLKMGR_HINT(_num_) \
-    OT_DJ_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
+#define OT_DJ_SOC_CLOCK_CONN(_src_, _src_type_, _src_name_, _in_name_, \
+                             _in_num_) \
+    IBEX_CLOCK_CONN((OT_DJ_SOC_DEV_##_src_), _src_type_, _src_name_, \
+                    _in_name_, _in_num_)
+
+#define OT_DJ_SOC_CLOCK(_src_, _src_type_, _src_name_) \
+    OT_DJ_SOC_CLOCK_CONN(_src_, _src_type_, _src_name_, "clock", 0)
 
 #define OT_DJ_XPORT_MEMORY(_addr_) \
     IBEX_MEMMAP_MAKE_REG((_addr_), OT_DJ_CTN_MEMORY_REGION)
@@ -577,14 +579,15 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             { .base = 0x21100000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES),
             OT_DJ_SOC_GPIO_ALERT(0, 55),
             OT_DJ_SOC_GPIO_ALERT(1, 56)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR),
             OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.aes"),
             IBEX_DEV_UINT_PROP("edn-ep", 5u)
         ),
     },
@@ -597,8 +600,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 115),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 116),
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 117),
-            OT_DJ_SOC_GPIO_ALERT(0, 57),
-            OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC)
+            OT_DJ_SOC_GPIO_ALERT(0, 57)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.hmac")
         ),
     },
     [OT_DJ_SOC_DEV_KMAC] = {
@@ -614,9 +622,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(1, 59)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR),
             OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.kmac"),
             IBEX_DEV_UINT_PROP("edn-ep", 3u),
             IBEX_DEV_UINT_PROP("num-app", 4u)
         ),
@@ -629,14 +639,15 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 121),
             OT_DJ_SOC_GPIO_ALERT(0, 60),
-            OT_DJ_SOC_GPIO_ALERT(1, 61),
-            OT_DJ_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN)
+            OT_DJ_SOC_GPIO_ALERT(1, 61)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR),
             OT_DJ_SOC_DEVLINK("edn-u", EDN0),
             OT_DJ_SOC_DEVLINK("edn-r", EDN1)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.otbn"),
             IBEX_DEV_UINT_PROP("edn-u-ep", 6u),
             IBEX_DEV_UINT_PROP("edn-r-ep", 0u)
         ),
@@ -1039,8 +1050,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(7, PLIC, 8),
             OT_DJ_SOC_GPIO_ALERT(0, 0)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_I2C0] = {
@@ -1066,8 +1080,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(14, PLIC, 67),
             OT_DJ_SOC_GPIO_ALERT(0, 3)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_TIMER] = {
@@ -1080,8 +1097,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 68),
             OT_DJ_SOC_GPIO_ALERT(0, 4)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "timers.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_OTP_CTRL] = {
@@ -1186,14 +1206,16 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR),
             OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ),
             IBEX_DEV_UINT_PROP("n_alerts", 99u),
             IBEX_DEV_UINT_PROP("n_classes", 4u),
             IBEX_DEV_UINT_PROP("n_lpg", 18u),
-            IBEX_DEV_UINT_PROP("edn-ep", 4u)
+            IBEX_DEV_UINT_PROP("edn-ep", 4u),
+            IBEX_DEV_STRING_PROP("clock-name", "secure.io_div4"),
+            IBEX_DEV_STRING_PROP("clock-name-edn", "secure.main")
         ),
     },
     [OT_DJ_SOC_DEV_SPI_HOST0] = {
@@ -1206,10 +1228,13 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 77),
             OT_DJ_SOC_GPIO_ALERT(0, 13)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
-            IBEX_DEV_UINT_PROP("pclk", OT_DJ_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_DJ_SOC_DEV_SPI_DEVICE] = {
@@ -1251,7 +1276,11 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_SIGNAL(OT_PWRMGR_RST_REQ, 0, RSTMGR,
                              OT_RSTMGR_RST_REQ, 0)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock_ctrl", AST)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clocks", "main,io,usb"),
             IBEX_DEV_UINT_PROP("num-rom", 2u),
             IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_DJ_PRE)
         ),
@@ -1279,7 +1308,26 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_DJ_SOC_GPIO_ALERT(0, 17),
             OT_DJ_SOC_GPIO_ALERT(1, 18)
-        )
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", AST)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("topclocks", "main:16,io:16,usb:16,aon:1"),
+            IBEX_DEV_STRING_PROP("refclock", "aon"),
+            IBEX_DEV_STRING_PROP("subclocks",
+                "io_div2:io:2,io_div4:io:4,"
+                "aes:main:1,hmac:main:1,kmac:main:1,otbn:main:1"),
+            IBEX_DEV_STRING_PROP("groups",
+                "powerup:io_div4+aon+main+io+usb+io_div2,"
+                "trans:aes+hmac+kmac+otbn,"
+                "infra:io_div4+main+aon+usb+io,"
+                "secure:io_div4+main+aon,"
+                "peri:io_div4+io_div2+io+aon+usb,"
+                "timers:io_div4+aon"),
+            IBEX_DEV_STRING_PROP("swcg", "peri"),
+            IBEX_DEV_STRING_PROP("hint", "trans")
+        ),
     },
     [OT_DJ_SOC_DEV_PINMUX] = {
         .type = TYPE_OT_PINMUX_DJ,
@@ -1336,14 +1384,23 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_SIGNAL(OT_AON_TIMER_BITE, 0, PWRMGR,
                              OT_PWRMGR_RST, OT_DJ_RESET_AON_TIMER)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_DJ_AON_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "timers.io_div4"),
+            IBEX_DEV_STRING_PROP("clock-name-aon", "timers.aon")
         ),
     },
     [OT_DJ_SOC_DEV_AST] = {
         .type = TYPE_OT_AST_DJ,
         .memmap = MEMMAPENTRIES(
             { .base = 0x30480000u }
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("topclocks",
+                "main:1000000000,io:1000000000,usb:1000000000,aon:62500000"),
+            IBEX_DEV_STRING_PROP("aonclocks", "aon")
         ),
     },
     [OT_DJ_SOC_DEV_SRAM_RET] = {

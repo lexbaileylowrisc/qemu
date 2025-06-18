@@ -21,6 +21,7 @@ config IBEX_GPIO
 config OT_DARJEELING
     bool
     select IBEX
+    select IBEX_CLOCK_SRC
     select IBEX_COMMON
     select OT_ADDRESS_SPACE
     select OT_AES
