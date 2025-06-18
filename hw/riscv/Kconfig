@@ -7,6 +7,9 @@ config RISCV_NUMA
 config IBEX
     bool
 
+config IBEX_CLOCK_SRC
+    bool
+
 config IBEX_COMMON
     bool
 
