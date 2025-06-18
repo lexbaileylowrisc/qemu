@@ -83,6 +83,8 @@
 /* Forward Declarations */
 /* ------------------------------------------------------------------------ */
 
+static void ot_eg_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                    DeviceState *parent);
 static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
                                    DeviceState *parent);
 static void ot_eg_soc_flash_ctrl_configure(
@@ -182,20 +184,6 @@ enum OtEGBoardDevice {
     OT_EG_BOARD_DEV_COUNT,
 };
 
-/* EarlGrey/CW310 Core clock is 24 MHz */
-#define OT_EG_CORE_CLK_HZ 24000000u
-/* EarlGrey/CW310 Peripheral clock is 6 MHz */
-#define OT_EG_PERIPHERAL_CLK_HZ ((OT_EG_CORE_CLK_HZ) / 4u)
-/* EarlGrey/CW310 AON clock is 250 kHz */
-#define OT_EG_AON_CLK_HZ 250000u
-
-/* Verilator Core clock is 500 kHz */
-#define OT_EG_VERILATOR_CORE_CLK_HZ 500000u
-/* Verilator Peripheral clock is 125 kHz */
-#define OT_EG_VERILATOR_PERIPHERAL_CLK_HZ ((OT_EG_VERILATOR_CORE_CLK_HZ) / 4u)
-/* Verilator AON clock is 125 kHz */
-#define OT_EG_VERILATOR_AON_CLK_HZ OT_EG_VERILATOR_PERIPHERAL_CLK_HZ
-
 #define OT_EG_IBEX_WRAPPER_NUM_REGIONS 2u
 
 static const uint8_t ot_eg_pmp_cfgs[] = {
@@ -281,10 +269,6 @@ static const uint32_t ot_eg_pmp_addrs[] = {
 /* Response link */
 #define OT_EG_SOC_RSP(_rsp_, _tgt_) \
     OT_EG_SOC_SIGNAL(_rsp_##_RSP, 0, _tgt_, _rsp_##_RSP, 0)
-
-
-#define OT_EG_SOC_CLKMGR_HINT(_num_) \
-    OT_EG_SOC_SIGNAL(OT_CLOCK_ACTIVE, 0, CLKMGR, OT_CLKMGR_HINT, _num_)
 
 #define OT_EG_SOC_DM_CONNECTION(_dst_dev_, _num_) \
     { \
@@ -389,9 +373,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 9),
             OT_EG_SOC_GPIO_ALERT(0, 0)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u0"),
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_UART1] = {
@@ -413,9 +400,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 18),
             OT_EG_SOC_GPIO_ALERT(0, 1)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u1"),
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_UART2] = {
@@ -437,9 +427,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 27),
             OT_EG_SOC_GPIO_ALERT(0, 2)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u2"),
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_UART3] = {
@@ -461,9 +454,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(8, PLIC, 36),
             OT_EG_SOC_GPIO_ALERT(0, 3)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "u3"),
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_GPIO] = {
@@ -603,8 +599,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 124),
             OT_EG_SOC_GPIO_ALERT(0, 10)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "timers.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_OTP_CTRL] = {
@@ -622,12 +621,12 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(3, 14),
             OT_EG_SOC_GPIO_ALERT(4, 15)
         ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_UINT_PROP("edn-ep", 1u)
+        ),
         .link = IBEXDEVICELINKDEFS(
             OT_EG_SOC_DEVLINK("edn", EDN0),
             OT_EG_SOC_DEVLINK("backend", OTP_BACKEND)
-        ),
-        .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("edn-ep", 1u)
         ),
     },
     [OT_EG_SOC_DEV_OTP_BACKEND] = {
@@ -692,14 +691,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ESCALATE(3, PWRMGR, 0)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR),
             OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_PERIPHERAL_CLK_HZ),
             IBEX_DEV_UINT_PROP("n_alerts", 65u),
             IBEX_DEV_UINT_PROP("n_classes", 4u),
             IBEX_DEV_UINT_PROP("n_lpg", 22u),
-            IBEX_DEV_UINT_PROP("edn-ep", 4u)
+            IBEX_DEV_UINT_PROP("edn-ep", 4u),
+            IBEX_DEV_STRING_PROP("clock-name", "secure.io_div4"),
+            IBEX_DEV_STRING_PROP("clock-name-edn", "secure.main")
         ),
     },
     [OT_EG_SOC_DEV_SPI_HOST0] = {
@@ -712,10 +713,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 132),
             OT_EG_SOC_GPIO_ALERT(0, 19)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi0"),
             IBEX_DEV_UINT_PROP("bus-num", 0),
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_CORE_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_SPI_HOST1] = {
@@ -728,10 +732,13 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 134),
             OT_EG_SOC_GPIO_ALERT(0, 20)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "spi1"),
             IBEX_DEV_UINT_PROP("bus-num", 1),
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_CORE_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "peri.io_div4")
         ),
     },
     [OT_EG_SOC_DEV_USBDEV] = {
@@ -769,7 +776,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_RSTMGR_RST_REQ, 0),
             OT_EG_SOC_GPIO_ALERT(0, 22)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock_ctrl", AST)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clocks", "main,io,usb"),
             IBEX_DEV_UINT_PROP("num-rom", 1u),
             IBEX_DEV_UINT_PROP("version", OT_PWRMGR_VERSION_EG_252)
         ),
@@ -797,7 +808,26 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 25),
             OT_EG_SOC_GPIO_ALERT(1, 26)
-        )
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", AST)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("topclocks", "main:500,io:480,usb:240,aon:1"),
+            IBEX_DEV_STRING_PROP("refclock", "aon"),
+            IBEX_DEV_STRING_PROP("subclocks",
+                "io_div2:io:2,io_div4:io:4,"
+                "aes:main:1,hmac:main:1,kmac:main:1,otbn:main:1"),
+            IBEX_DEV_STRING_PROP("groups",
+                "powerup:io_div4+aon+main+io+usb+io_div2,"
+                "trans:aes+hmac+kmac+otbn,"
+                "infra:io_div4+main+usb+io,"
+                "secure:io_div4+main+aon,"
+                "peri:io_div4+io_div2+io+aon+usb,"
+                "timers:io_div4+aon"),
+            IBEX_DEV_STRING_PROP("swcg", "peri"),
+            IBEX_DEV_STRING_PROP("hint", "trans")
+        ),
     },
     [OT_EG_SOC_DEV_SYSRST_CTRL] = {
         .type = TYPE_OT_UNIMP,
@@ -872,14 +902,22 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
                              OT_PWRMGR_RST, OT_EG_RESET_AON_TIMER),
             OT_EG_SOC_GPIO_ALERT(0, 31)
         ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_UINT_PROP("pclk", OT_EG_AON_CLK_HZ)
+            IBEX_DEV_STRING_PROP("clock-name", "timers.io_div4"),
+            IBEX_DEV_STRING_PROP("clock-name-aon", "timers.aon")
         ),
     },
     [OT_EG_SOC_DEV_AST] = {
         .type = TYPE_OT_AST_EG,
+        .cfg = &ot_eg_soc_ast_configure,
         .memmap = MEMMAPENTRIES(
             { .base = 0x40480000u }
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("aonclocks", "aon")
         ),
     },
     [OT_EG_SOC_DEV_SENSOR_CTRL] = {
@@ -890,7 +928,7 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
         .gpio = IBEXGPIOCONNDEFS(
             OT_EG_SOC_GPIO_ALERT(0, 32),
             OT_EG_SOC_GPIO_ALERT(1, 33)
-        )
+        ),
     },
     [OT_EG_SOC_DEV_SRAM_RET_CTRL] = {
         .type = TYPE_OT_SRAM_CTRL,
@@ -942,14 +980,15 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41100000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_AES),
             OT_EG_SOC_GPIO_ALERT(0, 42),
             OT_EG_SOC_GPIO_ALERT(1, 43)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR),
             OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.aes"),
             IBEX_DEV_UINT_PROP("edn-ep", 5u)
         ),
     },
@@ -959,11 +998,16 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41110000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 166),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 167),
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 168),
-            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_HMAC),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 165),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(1, PLIC, 166),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(2, PLIC, 167),
             OT_EG_SOC_GPIO_ALERT(0, 44)
+        ),
+        .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR)
+        ),
+        .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.hmac")
         ),
     },
     [OT_EG_SOC_DEV_KMAC] = {
@@ -979,9 +1023,11 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_GPIO_ALERT(1, 46)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR),
             OT_EG_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.kmac"),
             IBEX_DEV_UINT_PROP("edn-ep", 3u),
             IBEX_DEV_UINT_PROP("num-app", 3u)
         ),
@@ -992,16 +1038,17 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41130000u }
         ),
         .gpio = IBEXGPIOCONNDEFS(
-            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 172),
-            OT_EG_SOC_CLKMGR_HINT(OT_CLKMGR_HINT_OTBN),
+            OT_EG_SOC_GPIO_SYSBUS_IRQ(0, PLIC, 171),
             OT_EG_SOC_GPIO_ALERT(0, 47),
             OT_EG_SOC_GPIO_ALERT(1, 48)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_EG_SOC_DEVLINK("clock-src", CLKMGR),
             OT_EG_SOC_DEVLINK("edn-u", EDN0),
             OT_EG_SOC_DEVLINK("edn-r", EDN1)
         ),
         .prop = IBEXDEVICEPROPDEFS(
+            IBEX_DEV_STRING_PROP("clock-name", "trans.otbn"),
             IBEX_DEV_UINT_PROP("edn-u-ep", 6u),
             IBEX_DEV_UINT_PROP("edn-r-ep", 0u)
         ),
@@ -1261,6 +1308,25 @@ struct OtEGMachineClass {
 /* Device Configuration */
 /* ------------------------------------------------------------------------ */
 
+static void ot_eg_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
+                                    DeviceState *parent)
+{
+    (void)def;
+    (void)parent;
+
+    bool verilator_mode =
+        object_property_get_bool(qdev_get_machine(), "verilator", NULL);
+    const char *clock_cfg;
+    if (!verilator_mode) {
+        /* EarlGrey/CW310 */
+        clock_cfg = "main:10000000,io:10000000,usb:10000000,aon:250000";
+    } else {
+        clock_cfg = "main:500000,io:500000,usb:500000,aon:250000";
+    }
+
+    qdev_prop_set_string(dev, "topclocks", clock_cfg);
+}
+
 static void ot_eg_soc_dm_configure(DeviceState *dev, const IbexDeviceDef *def,
                                    DeviceState *parent)
 {
@@ -1423,58 +1489,6 @@ static void ot_eg_soc_reset_exit(Object *obj, ResetType type)
                              true, &error_fatal);
 }
 
-static void
-ot_earlgrey_update_device_clocks(DeviceState **devices, size_t count)
-{
-    for (unsigned ix = 0; ix < (unsigned)count; ix++) {
-        DeviceState *dev = devices[ix];
-        if (!dev) {
-            continue;
-        }
-        Error *errp = NULL;
-        uint64_t pclk = object_property_get_uint(OBJECT(dev), "pclk", &errp);
-        if (errp) {
-            error_free(errp);
-            continue;
-        }
-        switch (pclk) {
-        case 0:
-            /* PCLK property exists, but is not used, skip it */
-            continue;
-        case OT_EG_CORE_CLK_HZ:
-            pclk = OT_EG_VERILATOR_CORE_CLK_HZ;
-            break;
-        case OT_EG_PERIPHERAL_CLK_HZ:
-            pclk = OT_EG_VERILATOR_PERIPHERAL_CLK_HZ;
-            break;
-        case OT_EG_AON_CLK_HZ:
-            pclk = OT_EG_VERILATOR_AON_CLK_HZ;
-            break;
-        default:
-            warn_report("%s: OT device %s has invalid pclk value: %" PRIu64,
-                        __func__, object_get_typename(OBJECT(dev)), pclk);
-            continue;
-        }
-
-        if (!object_property_set_uint(OBJECT(dev), "pclk", pclk, &errp)) {
-            error_propagate(&error_fatal, errp);
-            g_assert_not_reached();
-        }
-    }
-}
-
-static void
-ot_earlgrey_configure_verilator_devices(DeviceState **devices, BusState *bus,
-                                        const IbexDeviceDef *defs, size_t count)
-{
-    ibex_link_devices(devices, defs, count);
-    ibex_define_device_props(devices, defs, count);
-    ot_common_configure_device_opts(devices, count);
-    ot_earlgrey_update_device_clocks(devices, count);
-    ibex_realize_devices(devices, bus, defs, count);
-    ibex_connect_devices(devices, defs, count);
-}
-
 static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 {
     OtEGSoCState *s = RISCV_OT_EG_SOC(dev);
@@ -1482,19 +1496,9 @@ static void ot_eg_soc_realize(DeviceState *dev, Error **errp)
 
     /* Link, define properties and realize devices, then connect GPIOs */
     BusState *bus = sysbus_get_default();
-    bool verilator_mode;
-
-    verilator_mode =
-        object_property_get_bool(qdev_get_machine(), "verilator", NULL);
-    if (!verilator_mode) {
-        ot_common_configure_devices_with_id(s->devices, bus, "soc", false,
-                                            ot_eg_soc_devices,
-                                            ARRAY_SIZE(ot_eg_soc_devices));
-    } else {
-        ot_earlgrey_configure_verilator_devices(s->devices, bus,
-                                                ot_eg_soc_devices,
-                                                ARRAY_SIZE(ot_eg_soc_devices));
-    }
+    ot_common_configure_devices_with_id(s->devices, bus, "soc", false,
+                                        ot_eg_soc_devices,
+                                        ARRAY_SIZE(ot_eg_soc_devices));
 
     MemoryRegion *mrs[] = { get_system_memory(), NULL, NULL, NULL };
     ibex_map_devices(s->devices, mrs, ot_eg_soc_devices,
