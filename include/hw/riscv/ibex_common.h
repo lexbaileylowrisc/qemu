@@ -132,6 +132,23 @@ typedef struct {
     int index;
 } IbexDeviceLinkDef;
 
+typedef struct {
+    /* Clock source */
+    struct {
+        /* Clock source device index */
+        int index;
+        /* Clock name */
+        const char *name;
+    } out;
+    /* Clock sink */
+    struct {
+        /* Name of target input clock */
+        const char *name;
+        /* Index of target input clock */
+        int num;
+    } in;
+} IbexClockConnDef;
+
 /* Type of device property */
 typedef enum {
     IBEX_PROP_TYPE_BOOL,
@@ -200,6 +217,8 @@ struct IbexDeviceDef {
     const IbexDeviceLinkDef *link;
     /* Array of properties */
     const IbexDevicePropDef *prop;
+    /* Array of clock sources */
+    const IbexClockConnDef *clock;
     /* Array of GPIO export */
     const IbexGpioExportDef *gpio_export;
 };
@@ -294,6 +313,18 @@ typedef struct {
     }
 
 /*
+ * Create clock connection entries, each arg is IbexClockConnDef definition
+ */
+#define IBEXCLOCKCONNDEFS(...) \
+    (const IbexClockConnDef[]) \
+    { \
+        __VA_ARGS__, \
+        { \
+            .out.name = NULL \
+        } \
+    }
+
+/*
  * Create device property entries, each arg is IbexDevicePropDef definition
  */
 #define IBEXDEVICEPROPDEFS(...) \
@@ -366,6 +397,23 @@ typedef struct {
     { \
         .propname = (_pname_), \
         .index = (_idx_), \
+    }
+
+/*
+ * Create a IbexClockConnDef to connect a clock output to a clock input
+ */
+#define IBEX_CLOCK_CONN(_out_idx_, _out_type_, _out_name_, _in_name_, \
+                        _in_idx_) \
+    { \
+        .out = { \
+            .index = (_out_idx_), \
+            .type = (_out_type_), \
+            .name = (_out_name_), \
+        }, \
+        .in = { \
+            .name = (_in_name_), \
+            .num = (_in_idx_), \
+        } \
     }
 
 /*
@@ -444,6 +492,8 @@ void ibex_realize_system_devices(DeviceState **devices,
                                  const IbexDeviceDef *defs, unsigned count);
 void ibex_realize_devices(DeviceState **devices, BusState *bus,
                           const IbexDeviceDef *defs, unsigned count);
+void ibex_clock_devices(DeviceState **devices, const IbexDeviceDef *defs,
+                        unsigned count);
 void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
                           unsigned count);
 #define ibex_map_devices(_devs_, _mrs_, _defs_, _cnt_) \

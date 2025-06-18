@@ -41,6 +41,7 @@
 #include "hw/misc/unimp.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "monitor/monitor.h"
 #include "sysemu/runstate.h"
@@ -370,6 +371,49 @@ void ibex_connect_devices(DeviceState **devices, const IbexDeviceDef *defs,
     }
 }
 
+void ibex_clock_devices(DeviceState **devices, const IbexDeviceDef *defs,
+                        unsigned count)
+{
+    IbexClockSrcIfClass *ic = NULL;
+    IbexClockSrcIf *is = NULL;
+    int ii = -1;
+
+    for (unsigned idx = 0; idx < count; idx++) {
+        DeviceState *dev = devices[idx];
+        if (!dev) {
+            continue;
+        }
+        const IbexClockConnDef *clock = defs[idx].clock;
+        if (!clock) {
+            continue;
+        }
+
+        while (clock->out.name && clock->in.name) {
+            if (clock->out.index != ii) {
+                /* new clock source */
+                DeviceState *cs = devices[clock->out.index];
+                ic = IBEX_CLOCK_SRC_IF_GET_CLASS(cs);
+                is = IBEX_CLOCK_SRC_IF(cs);
+                ii = clock->out.index;
+            }
+
+            qemu_irq clk_irq =
+                qdev_get_gpio_in_named(dev, clock->in.name, clock->in.num);
+            if (!clk_irq) {
+                error_setg(&error_fatal, "no such clock '%s.%s[%d]'\n",
+                           object_get_typename(OBJECT(dev)), clock->in.name,
+                           clock->in.num);
+            }
+
+            g_assert(ic && ic->get_clock_source);
+            const char *out_name =
+                ic->get_clock_source(is, clock->out.name, dev, &error_fatal);
+            qdev_connect_gpio_out_named(dev, out_name, 0, clk_irq);
+            clock++;
+        }
+    }
+}
+
 /* List of exported GPIOs */
 typedef QLIST_HEAD(, NamedGPIOList) IbexXGPIOList;
 
@@ -578,6 +622,7 @@ void ibex_configure_devices_with_id(DeviceState **devices, BusState *bus,
         ibex_identify_devices(devices, id_prop, id_value, id_prepend, count);
     }
     ibex_realize_devices(devices, bus, defs, count);
+    ibex_clock_devices(devices, defs, count);
     ibex_connect_devices(devices, defs, count);
 }
 
