@@ -49,6 +49,9 @@ class QEMUWrapper:
     ANSI_CRE = re.compile(rb'(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]')
     """ANSI escape sequences."""
 
+    USELESS_ERR_CRE = re.compile(r'^\*{1,4}$')
+    """Useless error stuff from QEMU."""
+
     GUEST_ERROR_OFFSET = 40
     """Offset for guest errors. Should be larger than the host max signal value.
     """
@@ -126,6 +129,10 @@ class QEMUWrapper:
         vcp_map = tdef.vcp_map
         vcp_ctxs: dict[int, list[str, socket, bytearray, logging.Logger]] = {}
         asan_file = None
+        log_q = deque()
+        qemu_exec = f'{basename(tdef.command[0])}: '
+        classifier = LogMessageClassifier(classifiers=self._log_classifiers,
+                                          qemux=qemu_exec)
         try:
             workdir = dirname(tdef.command[0])
             log.debug('Executing QEMU as %s', ' '.join(tdef.command))
@@ -149,7 +156,7 @@ class QEMUWrapper:
                 pass
             else:
                 ret = proc.returncode
-                log.error('QEMU bailed out: %d for "%s"', ret, tdef.test_name)
+                log.fatal('QEMU bailed out: %d for "%s"', ret, tdef.test_name)
                 raise OSError()
             log.debug('Execute QEMU for %.0f secs', tdef.timeout)
             if asan_prefix:
@@ -161,7 +168,6 @@ class QEMUWrapper:
             # queue, which is popped and logged to the local logger on each
             # loop. Note that Popen's communicate() also relies on threads to
             # perform stdout/stderr read out.
-            log_q = deque()
             Thread(target=self._qemu_logger, name='qemu_out_logger',
                    args=(proc, log_q, True), daemon=True).start()
             Thread(target=self._qemu_logger, name='qemu_err_logger',
@@ -178,6 +184,8 @@ class QEMUWrapper:
                 if now() > timeout:
                     minfo = ', '.join(f'{d} @ {r[0]}:{r[1]}'
                                       for d, r in connect_map.items())
+                    if proc.poll():
+                        raise OSError(proc.returncode)
                     raise TimeoutError(f'Cannot connect to QEMU VCPs: {minfo}')
                 connected = []
                 for vcpid, (host, port) in connect_map.items():
@@ -219,23 +227,12 @@ class QEMUWrapper:
                     ret = 126
                     last_error = str(exc)
                     raise
-            qemu_exec = f'{basename(tdef.command[0])}: '
-            classifier = LogMessageClassifier(classifiers=self._log_classifiers,
-                                              qemux=qemu_exec)
             abstimeout = float(tdef.timeout) + now()
-            qemu_default_log = logging.ERROR
             vcp_default_log = logging.DEBUG
             while now() < abstimeout:
-                while log_q:
-                    err, qline = log_q.popleft()
-                    if err:
-                        level = classifier.classify(qline, qemu_default_log)
-                        if level == logging.INFO and \
-                           qline.find('QEMU waiting for connection') >= 0:
-                            level = logging.DEBUG
-                    else:
-                        level = logging.INFO
-                    self._qlog.log(level, qline)
+                log_err = self._process_log_queue(log_q, classifier)
+                if not last_error and log_err:
+                    last_error = log_err
                 if tdef.context:
                     wret = tdef.context.check_error()
                     if wret:
@@ -318,14 +315,17 @@ class QEMUWrapper:
                 ret = 124  # timeout
         except (OSError, ValueError) as exc:
             if ret is None:
-                log.error('Unable to execute QEMU: %s', exc)
                 ret = proc.returncode if proc.poll() is not None else 125
+                log.fatal('Unable to execute QEMU: %s', exc)
         finally:
             if xend is None:
                 xend = now()
             for _, sock, _, _ in vcp_ctxs.values():
                 sock.close()
             vcp_ctxs.clear()
+            log_err = self._process_log_queue(log_q, classifier)
+            if not last_error and log_err:
+                last_error = log_err
             if proc:
                 if xend is None:
                     xend = now()
@@ -341,7 +341,7 @@ class QEMUWrapper:
                     ret = proc.returncode
                 # retrieve the remaining log messages
                 stdlog = self._qlog.info if ret else self._qlog.debug
-                for msg, logger in zip(proc.communicate(timeout=0.1),
+                for msg, logger in zip(proc.communicate(timeout=1.1),
                                        (stdlog, self._qlog.error)):
                     for line in msg.split('\n'):
                         line = line.strip()
@@ -350,6 +350,9 @@ class QEMUWrapper:
             if asan_file:
                 self._post_process_asan(asan_file)
         xtime = ExecTime(xend-xstart) if xstart and xend else 0.0
+        qemu_cmd_lead = f'{basename(tdef.command[0])}: '
+        if last_error.startswith(qemu_cmd_lead):
+            last_error = last_error[len(qemu_cmd_lead):]
         return abs(ret) or 0, xtime, last_error
 
     @classmethod
@@ -391,6 +394,24 @@ class QEMUWrapper:
             return
         for color, logname in enumerate(sorted(lognames)):
             clr_fmt.add_logger_colors(f'{vcplogname}.{logname}', color)
+
+    def _process_log_queue(self, log_q, classifier) -> Optional[str]:
+        first_err = None
+        while log_q:
+            err, qline = log_q.popleft()
+            if err:
+                if self.USELESS_ERR_CRE.match(qline):
+                    continue
+                level = classifier.classify(qline, logging.ERROR)
+                if level == logging.INFO and \
+                   qline.find('QEMU waiting for connection') >= 0:
+                    level = logging.DEBUG
+                if level >= logging.ERROR and not first_err:
+                    first_err = qline
+            else:
+                level = logging.INFO
+            self._qlog.log(level, qline)
+        return first_err
 
     def _qemu_logger(self, proc: Popen, queue: deque, err: bool):
         # worker thread, blocking on VM stdout/stderr
