@@ -126,6 +126,7 @@ config OT_PRNG
     bool
 
 config OT_PWRMGR
+    select OT_CLOCK_CTRL
     bool
 
 config OT_RANDOM_SRC

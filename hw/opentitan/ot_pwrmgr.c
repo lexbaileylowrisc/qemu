@@ -33,6 +33,7 @@
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_clock_ctrl.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/opentitan/ot_rstmgr.h"
@@ -207,6 +208,10 @@ typedef enum {
 } OtPwrMgrClockDomain;
 
 typedef struct {
+    char *name;
+} OtPwrMgrClock;
+
+typedef struct {
     OtPwrMgrClockDomain domain;
     int req;
 } OtPwrMgrResetReq;
@@ -250,8 +255,11 @@ struct OtPwrMgrState {
     uint32_t *regs;
     OtPwrMgrResetReq reset_request;
     OtPwrMgrBootStatus boot_status;
+    GList *clocks;
 
     char *ot_id;
+    char *cfg_clocks;
+    DeviceState *clock_ctrl;
     uint8_t num_rom;
     uint8_t version;
     bool main; /* main power manager (for machines w/ multiple PwrMgr) */
@@ -262,6 +270,8 @@ struct OtPwrMgrClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
+
+static const char *CFGSEP = ",";
 
 #define PWRMGR_NAME_ENTRY(_pre_, _name_) [_pre_##_##_name_] = stringify(_name_)
 
@@ -319,6 +329,11 @@ typedef struct {
     unsigned reset_count;
     uint32_t reset_mask;
 } OtPwrMgrConfig;
+
+typedef struct {
+    OtPwrMgrState *s;
+    bool enable;
+} OtPwrMgrClockConfig;
 
 /* clang-format off */
 static const OtPwrMgrConfig PWRMGR_CONFIG[OT_PWRMGR_VERSION_COUNT] = {
@@ -474,6 +489,26 @@ static void ot_pwrmgr_wkup(void *opaque, int irq, int level)
     trace_ot_pwrmgr_wkup(s->ot_id, WAKEUP_NAME(s, src), src, (bool)level);
 }
 
+static void ot_pwrmgr_clock_enable(gpointer data, gpointer user_data)
+{
+    OtPwrMgrClock *clk = data;
+    OtPwrMgrClockConfig *cfg = user_data;
+    OtClockCtrlIfClass *oc = OT_CLOCK_CTRL_IF_GET_CLASS(cfg->s->clock_ctrl);
+    OtClockCtrlIf *oi = OT_CLOCK_CTRL_IF(cfg->s->clock_ctrl);
+    trace_ot_pwrmgr_clock_enable(cfg->s->ot_id, clk->name, cfg->enable);
+    oc->clock_enable(oi, clk->name, cfg->enable);
+}
+
+static void ot_pwrmgr_clock_enable_all(OtPwrMgrState *s, bool enable)
+{
+    OtPwrMgrClockConfig cfg = {
+        .s = s,
+        .enable = enable,
+    };
+
+    g_list_foreach(s->clocks, &ot_pwrmgr_clock_enable, &cfg);
+}
+
 static void ot_pwrmgr_rst_req(void *opaque, int irq, int level)
 {
     OtPwrMgrState *s = opaque;
@@ -582,6 +617,8 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
     switch (s->f_state) {
     case OT_PWR_FAST_ST_LOW_POWER:
         PWR_CHANGE_FAST_STATE(s, ENABLE_CLOCKS);
+        /* shortcut: real HW use a much more complex FSM to enable clocks */
+        ot_pwrmgr_clock_enable_all(s, true);
         break;
     case OT_PWR_FAST_ST_ENABLE_CLOCKS:
         s->boot_status.main_ip_clk_en = 1u;
@@ -751,6 +788,21 @@ static void ot_pwrmgr_holdon_fetch(void *opaque, int n, int level)
     ot_pwrmgr_schedule_fsm(s);
 }
 
+static void ot_pwrmgr_parse_clocks(OtPwrMgrState *s, Error **errp)
+{
+    if (!s->cfg_clocks) {
+        error_setg(errp, "%s: clocks config not defined", __func__);
+        return;
+    }
+
+    for (char *clkbrk, *clkname = strtok_r(s->cfg_clocks, CFGSEP, &clkbrk);
+         clkname; clkname = strtok_r(NULL, CFGSEP, &clkbrk)) {
+        OtPwrMgrClock *clk = g_new0(OtPwrMgrClock, 1u);
+        clk->name = strdup(clkname);
+        s->clocks = g_list_append(s->clocks, clk);
+    }
+}
+
 static uint64_t ot_pwrmgr_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtPwrMgrState *s = opaque;
@@ -900,6 +952,9 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 
 static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtPwrMgrState, ot_id),
+    DEFINE_PROP_STRING("clocks", OtPwrMgrState, cfg_clocks),
+    DEFINE_PROP_LINK("clock_ctrl", OtPwrMgrState, clock_ctrl, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_UINT8("num-rom", OtPwrMgrState, num_rom, 0),
     DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),
     DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),
@@ -979,6 +1034,8 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->ot_id);
     g_assert(s->version < OT_PWRMGR_VERSION_COUNT);
+    g_assert(s->clock_ctrl);
+    OBJECT_CHECK(OtClockCtrlIf, s->clock_ctrl, TYPE_OT_CLOCK_CTRL_IF);
 
     if (s->num_rom) {
         if (s->num_rom > 8u * sizeof(uint8_t)) {
@@ -995,6 +1052,8 @@ static void ot_pwrmgr_realize(DeviceState *dev, Error **errp)
         qdev_init_gpio_in_named(dev, &ot_pwrmgr_holdon_fetch,
                                 OT_PWRMGR_HOLDON_FETCH, 1u);
     }
+
+    ot_pwrmgr_parse_clocks(s, &error_fatal);
 }
 
 static void ot_pwrmgr_init(Object *obj)
