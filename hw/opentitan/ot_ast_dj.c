@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_random_src.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
@@ -143,6 +144,8 @@ typedef struct {
     char *name;
     unsigned frequency;
     IbexIRQ out;
+    char *irq_name;
+    const DeviceState *sink;
     bool aon;
     bool active;
 } OtASTDjClock;
@@ -258,6 +261,29 @@ static void ot_ast_dj_update_clock(gpointer data, gpointer user_data)
     ibex_irq_set(&clk->out, (int)frequency);
 }
 
+static const char *
+ot_ast_dj_get_clock_source(IbexClockSrcIf *ifd, const char *name,
+                           const DeviceState *sink, Error **errp)
+{
+    OtASTDjState *s = OT_AST_DJ(ifd);
+
+    OtASTDjClock *clk = ot_ast_dj_find_clock(s, name);
+    if (!clk) {
+        error_setg(errp, "%s: AST: no such clock: %s", __func__, name);
+        return NULL;
+    }
+
+    if (clk->sink && clk->sink != sink) {
+        error_setg(errp, "%s: AST supports a unique sink per clock: %s",
+                   __func__, name);
+        return NULL;
+    }
+
+    clk->sink = sink;
+
+    return clk->irq_name;
+}
+
 static void ot_ast_dj_clock_enable(OtClockCtrlIf *dev, const char *clkname,
                                    bool enable)
 {
@@ -320,11 +346,10 @@ static void ot_ast_dj_parse_clocks(OtASTDjState *s, Error **errp)
         OtASTDjClock *clk = g_new0(OtASTDjClock, 1u);
         clk->name = strdup(clkname);
         clk->frequency = clkfreq;
-        char *clock_name = g_strdup_printf("clock-out-%s", clk->name);
-        ibex_qdev_init_irq(OBJECT(s), &clk->out, clock_name);
+        clk->irq_name = g_strdup_printf("clock-out-%s", clk->name);
+        ibex_qdev_init_irq(OBJECT(s), &clk->out, clk->irq_name);
         s->clocks = g_list_append(s->clocks, clk);
-        trace_ot_ast_create_clock(clk->name, clk->frequency, clock_name);
-        g_free(clock_name);
+        trace_ot_ast_create_clock(clk->name, clk->frequency, clk->irq_name);
     }
     g_free(config);
 
@@ -614,6 +639,9 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
     OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
     rdc->get_random_values = &ot_ast_dj_get_random;
 
+    IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_CLASS(klass);
+    ic->get_clock_source = &ot_ast_dj_get_clock_source;
+
     OtClockCtrlIfClass *cc = OT_CLOCK_CTRL_IF_CLASS(klass);
     cc->clock_enable = &ot_ast_dj_clock_enable;
     cc->clock_ext_freq_select = &ot_ast_dj_clock_ext_freq_select;
@@ -629,6 +657,7 @@ static const TypeInfo ot_ast_dj_info = {
     .interfaces =
         (InterfaceInfo[]){
             { TYPE_OT_RANDOM_SRC_IF },
+            { TYPE_IBEX_CLOCK_SRC_IF },
             { TYPE_OT_CLOCK_CTRL_IF },
             {},
         },
