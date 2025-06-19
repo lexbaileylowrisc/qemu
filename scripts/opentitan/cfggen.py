@@ -14,7 +14,7 @@ from configparser import ConfigParser
 from logging import getLogger
 from os.path import abspath, dirname, isdir, isfile, join as joinpath, normpath
 from traceback import format_exc
-from typing import Optional
+from typing import NamedTuple, Optional
 import re
 import sys
 
@@ -34,11 +34,56 @@ except ImportError as hjson_exc:
 from ot.otp.const import OtpConstants
 from ot.otp.lifecycle import OtpLifecycle
 from ot.util.log import configure_loggers
-from ot.util.misc import camel_to_snake_case
+from ot.util.misc import camel_to_snake_case, to_bool
 
 
 OtParamRegex = str
 """Definition of a parameter to seek and how to shorten it."""
+
+
+class OtClock(NamedTuple):
+    """Clock definition."""
+
+    name: str
+    """Clock signal name."""
+
+    frequency: int
+    """Clock frequency in Hz."""
+
+    aon: bool
+    """Whether the clock is always on."""
+
+    ref: bool
+    """Whether the clock is a reference clock."""
+
+
+class OtDerivedClock(NamedTuple):
+    """Clock derived from a top level clock definition."""
+
+    name: str
+    """Clock signal name."""
+
+    source: str
+    """Clock source signal name."""
+
+    div: int
+    """Divider."""
+
+
+class OtClockGroup(NamedTuple):
+    """Clock logicial group definition."""
+
+    name: str
+    """Group name."""
+
+    sources: list[str]
+    """Clock source signal names."""
+
+    sw_cg: bool
+    """Whether clock group can be managed by SW."""
+
+    hint: bool
+    """Whether clock group can be hinted by SW."""
 
 
 class OtConfiguration:
@@ -53,6 +98,9 @@ class OtConfiguration:
         self._roms: dict[Optional[int], dict[str, str]] = {}
         self._otp: dict[str, str] = {}
         self._lc: dict[str, str] = {}
+        self._top_clocks: dict[str, OtClock] = {}
+        self._sub_clocks: dict[str, OtDerivedClock] = {}
+        self._clock_groups: dict[str, OtClockGroup] = {}
         self._top_name: Optional[str] = None
 
     @property
@@ -76,6 +124,59 @@ class OtConfiguration:
                 self._load_top_values(module, self._otp, False,
                                       r'RndCnst(.*)Init')
                 continue
+        clocks = cfg.get('clocks', {})
+        for clock in clocks.get('srcs', []):
+            name = clock['name']
+            aon = to_bool(clock['aon'], False)
+            ref = to_bool(clock['ref'], False)
+            freq = int(clock['freq'])
+            self._top_clocks[name] = OtClock(name, freq, aon, ref)
+        for clock in clocks.get('derived_srcs', []):
+            name = clock['name']
+            src = clock['src']
+            aon = to_bool(clock['aon'], False)
+            freq = int(clock['freq'])
+            div = int(clock['div'])
+            src_clock = self._top_clocks.get(src)
+            if not src_clock:
+                raise ValueError(f'Invalid top clock {src} '
+                                 f'referenced from {name}')
+            if src_clock.frequency // div != freq:
+                raise ValueError(f'Incoherent derived clock {name} frequency: '
+                                 f'{src_clock.frequency}/{div} != {freq}')
+            if aon and not src_clock.aon:
+                raise ValueError(f'Incoherent derived clock {name} AON')
+            self._sub_clocks[name] = OtDerivedClock(name, src, div)
+        clock_names = set(self._top_clocks.keys())
+        clock_names.update(set(self._sub_clocks.keys()))
+        for group in clocks.get('groups', []):
+            ext = group['src'] == 'ext'
+            if ext:
+                continue
+            name = group['name']
+            hint = group['sw_cg'] == 'hint'
+            sw_cg = not hint and to_bool(group['sw_cg'], False)
+            clk_srcs = []
+            for clk_name, clk_src in group.get('clocks', {}).items():
+                if not hint:
+                    exp_name = f'clk_{clk_src}_{name}'
+                    if clk_name != exp_name:
+                        raise ValueError(f'Unexpected clock {clk_name} in group'
+                                         f' {name} (exp: {exp_name})')
+                    clk_srcs.append(clk_src)
+                else:
+                    exp_prefix = f'clk_{clk_src}_'
+                    if not clk_name.startswith(exp_prefix):
+                        raise ValueError(f'Unexpected clock {clk_name} in group'
+                                         f' {name}')
+                    src_name = clk_name[len(exp_prefix):]
+                    clk_srcs.append(src_name)
+                    if src_name in self._sub_clocks:
+                        raise ValueError(f'Refinition of clock {src_name}')
+                    self._sub_clocks[src_name] = OtDerivedClock(src_name,
+                                                                clk_src, 1)
+            self._clock_groups[name] = OtClockGroup(name, clk_srcs, sw_cg,
+                                                    hint)
 
     def load_lifecycle(self, lcpath: str) -> None:
         """Load LifeCycle data from RTL file."""
@@ -138,6 +239,9 @@ class OtConfiguration:
         self._generate_roms(cfg, socid, count or 1)
         self._generate_otp(cfg, variant, socid)
         self._generate_life_cycle(cfg, socid)
+        self._generate_ast(cfg, variant, socid)
+        self._generate_clkmgr(cfg, socid)
+        self._generate_pwrmgr(cfg, socid)
         if outpath:
             with open(outpath, 'wt') as ofp:
                 cfg.write(ofp)
@@ -226,6 +330,77 @@ class OtConfiguration:
             self.add_pair(lcdata, kname, value)
         lcdata = dict(sorted(lcdata.items()))
         cfg[f'ot_device "{lcname}"'] = lcdata
+
+    def _generate_ast(self, cfg: ConfigParser, variant: str,
+                         socid: Optional[str] = None) -> None:
+        nameargs = [f'ot-ast-{variant}']
+        if socid:
+            nameargs.append(socid)
+        clkname = '.'.join(nameargs)
+        clkdata = {}
+        topclockstr = ','.join(f'{c.name}:{c.frequency}'
+                               for c in self._top_clocks.values())
+        aonclockstr = ','.join(c.name for c in self._top_clocks.values()
+                               if c.aon)
+        self.add_pair(clkdata, 'topclocks', topclockstr)
+        self.add_pair(clkdata, 'aonclocks', aonclockstr)
+        cfg[f'ot_device "{clkname}"'] = clkdata
+
+    def _generate_clkmgr(self, cfg: ConfigParser,
+                         socid: Optional[str] = None) -> None:
+        nameargs = ['ot-clkmgr']
+        if socid:
+            nameargs.append(socid)
+        clkname = '.'.join(nameargs)
+        clkdata = {}
+        refclocks = [c for c in self._top_clocks.values() if c.ref]
+        if len(refclocks) > 1:
+            raise ValueError(f'Multiple reference clocks detected: '
+                             f'{", ".join(refclocks)}')
+        if refclocks:
+            clkrefname = refclocks[0].name
+            clfrefval = self._top_clocks.get(clkrefname)
+            if not clfrefval:
+                raise ValueError(f'Invalid reference clock {clkrefname}')
+        else:
+            clkrefname = None
+            clfrefval = None
+        topclockdefs = []
+        for clkname, clkval in self._top_clocks.items():
+            if clfrefval:
+                clkratio = clkval.frequency // clfrefval.frequency
+            else:
+                clkratio = 1
+            topclockdefs.append(f'{clkname}:{clkratio}')
+        topclockstr = ','.join(topclockdefs)
+        subclockstr = ','.join(f'{c.name}:{c.source}:{c.div}'
+                               for c in self._sub_clocks.values())
+        groupstr = ','.join(f'{g.name}:{"+".join(sorted(g.sources))}'
+                            for g in self._clock_groups.values())
+        swcfgstr = ','.join(g.name for g in self._clock_groups.values()
+                            if g.sw_cg)
+        hintstr = ','.join(g.name for g in self._clock_groups.values()
+                            if g.hint)
+        self.add_pair(clkdata, 'topclocks', topclockstr)
+        if clkrefname:
+            self.add_pair(clkdata, 'refclock', clkrefname)
+        self.add_pair(clkdata, 'subclocks', subclockstr)
+        self.add_pair(clkdata, 'groups', groupstr)
+        self.add_pair(clkdata, 'swcfg', swcfgstr)
+        self.add_pair(clkdata, 'hint', hintstr)
+        cfg[f'ot_device "{clkname}"'] = clkdata
+
+    def _generate_pwrmgr(self, cfg: ConfigParser,
+                         socid: Optional[str] = None) -> None:
+        nameargs = ['ot-pwrmgr']
+        if socid:
+            nameargs.append(socid)
+        pwrname = '.'.join(nameargs)
+        pwrdata = {}
+        clockstr = ','.join(c.name for c in self._top_clocks.values()
+                               if not c.aon)
+        self.add_pair(pwrdata, 'clocks', clockstr)
+        cfg[f'ot_device "{pwrname}"'] = pwrdata
 
 
 def main():
