@@ -54,14 +54,15 @@
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
+#include "qapi/error.h"
 #include "hw/i2c/i2c.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_fifo32.h"
 #include "hw/opentitan/ot_i2c_dj.h"
-#include "hw/qdev-clock.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
@@ -294,8 +295,12 @@ struct OtI2CDjState {
     /* TX: Scheduled responses for target mode. */
     Fifo8 target_tx_fifo;
 
+    uint32_t pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
+
     char *ot_id;
-    uint32_t pclk;
+    char *clock_name;
+    DeviceState *clock_src;
 };
 
 struct OtI2CDjClass {
@@ -471,6 +476,10 @@ static void ot_i2c_dj_target_write_tx_fifo(OtI2CDjState *s, uint8_t val)
 
 static bool ot_i2c_dj_check_timings(OtI2CDjState *s)
 {
+    if (!s->pclk) {
+        return 0;
+    }
+
     uint32_t thigh = FIELD_EX32(s->regs[R_TIMING0], TIMING0, THIGH);
     uint32_t tlow = FIELD_EX32(s->regs[R_TIMING0], TIMING0, TLOW);
     uint32_t tr = FIELD_EX32(s->regs[R_TIMING1], TIMING1, T_R);
@@ -594,6 +603,20 @@ static bool ot_i2c_dj_check_timings(OtI2CDjState *s)
     }
 
     return res;
+}
+
+static void ot_i2c_dj_clock_input(void *opaque, int irq, int level)
+{
+    OtI2CDjState *s = opaque;
+
+    g_assert(irq == 0);
+
+    if (level && ((uint32_t)level != s->pclk)) {
+        s->check_timings = true;
+    }
+
+    s->pclk = (uint32_t)level;
+    /* TODO: disable I2C transfers when PCLK is 0 */
 }
 
 static uint64_t ot_i2c_dj_read(void *opaque, hwaddr addr, unsigned size)
@@ -1106,7 +1129,9 @@ static const MemoryRegionOps ot_i2c_dj_ops = {
 
 static Property ot_i2c_dj_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtI2CDjState, ot_id),
-    DEFINE_PROP_UINT32("pclk", OtI2CDjState, pclk, 0u),
+    DEFINE_PROP_STRING("clock-name", OtI2CDjState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtI2CDjState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1133,6 +1158,16 @@ static void ot_i2c_dj_reset_enter(Object *obj, ResetType type)
     ot_i2c_dj_target_reset_tx_fifo(s);
     ot_i2c_dj_target_reset_rx_fifo(s);
 
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq = qdev_get_gpio_in_named(DEVICE(s), "clock-in", 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+    }
+
     s->check_timings = true;
 }
 
@@ -1142,7 +1177,11 @@ static void ot_i2c_dj_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
-    g_assert(s->pclk);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+    OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_i2c_dj_clock_input, "clock-in", 1);
 
     /* TODO: check if the following can be moved to ot_i2c_dj_init */
     s->bus = i2c_init_bus(dev, TYPE_OT_I2C_DJ);
