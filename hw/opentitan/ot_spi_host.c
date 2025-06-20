@@ -45,6 +45,7 @@
 #include "hw/opentitan/ot_spi_host.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/ssi/ssi.h"
@@ -348,10 +349,13 @@ struct OtSPIHostState {
 
     OtSPIHostFsm fsm;
     bool on_reset;
+    unsigned pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
 
     /* properties */
     char *ot_id;
-    uint32_t pclk; /* input peripheral clock (Hz) */
+    char *clock_name; /* clock name */
+    DeviceState *clock_src; /* clock source */
     uint32_t start_delay_ns; /* initial command kick off delay */
     uint32_t completion_delay_ns; /** completion delay/pacing */
     uint32_t bus_num; /* SPI host port number */
@@ -948,6 +952,18 @@ static void ot_spi_host_schedule_fsm(void *opaque)
     ot_spi_host_trace_status(s, "P<", ot_spi_host_get_status(s));
 }
 
+static void ot_spi_host_clock_input(void *opaque, int irq, int level)
+{
+    OtSPIHostState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    /* TODO: disable SPI transfer when PCLK is 0 */
+    trace_ot_spi_host_clock_update(s->ot_id, s->pclk);
+}
+
 static uint64_t ot_spi_host_io_read(void *opaque, hwaddr addr,
                                     unsigned int size)
 {
@@ -1272,7 +1288,9 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSPIHostState, ot_id),
     DEFINE_PROP_UINT32("num-cs", OtSPIHostState, num_cs, 1u),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0u),
-    DEFINE_PROP_UINT32("pclk", OtSPIHostState, pclk, 0u),
+    DEFINE_PROP_STRING("clock-name", OtSPIHostState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtSPIHostState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_UINT32("start-delay", OtSPIHostState, start_delay_ns,
                        FSM_START_DELAY_NS),
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
@@ -1301,6 +1319,16 @@ static void ot_spi_host_reset_enter(Object *obj, ResetType type)
 
     s->on_reset = true;
 
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq = qdev_get_gpio_in_named(DEVICE(s), "clock-in", 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+    }
+
     ot_spi_host_internal_reset(s);
 }
 
@@ -1322,12 +1350,15 @@ static void ot_spi_host_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
-    g_assert(s->pclk);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+    OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
 
     s->cs_lines = g_new0(qemu_irq, (size_t)s->num_cs);
 
     qdev_init_gpio_out_named(DEVICE(s), s->cs_lines, SSI_GPIO_CS,
                              (int)s->num_cs);
+    qdev_init_gpio_in_named(DEVICE(s), &ot_spi_host_clock_input, "clock-in", 1);
 
     char busname[16u];
     if (snprintf(busname, sizeof(busname), "spi%u", s->bus_num) >=
