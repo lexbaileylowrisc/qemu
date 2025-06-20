@@ -28,11 +28,13 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_timer.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
@@ -90,9 +92,12 @@ struct OtTimerState {
 
     uint32_t regs[REGS_COUNT];
     int64_t origin_ns;
+    uint32_t pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
 
     char *ot_id;
-    uint32_t pclk;
+    char *clock_name;
+    DeviceState *clock_src;
 };
 
 struct OtTimerClass {
@@ -110,6 +115,8 @@ static uint64_t ot_timer_ns_to_ticks(OtTimerState *s, int64_t ns)
 
 static int64_t ot_timer_ticks_to_ns(OtTimerState *s, uint64_t ticks)
 {
+    g_assert(s->pclk);
+
     uint32_t prescaler = FIELD_EX32(s->regs[R_CFG0], CFG0, PRESCALE);
     uint32_t step = FIELD_EX32(s->regs[R_CFG0], CFG0, STEP);
     uint64_t ns = muldiv64(ticks, (prescaler + 1u), step);
@@ -132,6 +139,8 @@ static int64_t
 ot_timer_compute_next_timeout(OtTimerState *s, int64_t now, int64_t delta)
 {
     int64_t next;
+
+    g_assert(s->pclk);
 
     /* wait at least 1 peripheral clock tick */
     delta = MAX(delta, (int64_t)(NANOSECONDS_PER_SECOND / s->pclk));
@@ -170,6 +179,10 @@ static void ot_timer_rearm(OtTimerState *s, bool reset_origin)
 {
     timer_del(s->timer);
 
+    if (!s->pclk) {
+        return;
+    }
+
     int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
 
     if (reset_origin) {
@@ -203,6 +216,22 @@ static void ot_timer_cb(void *opaque)
 {
     OtTimerState *s = opaque;
     ot_timer_rearm(s, false);
+}
+
+static void ot_timer_clock_input(void *opaque, int irq, int level)
+{
+    OtTimerState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    if (!s->pclk) {
+        timer_del(s->timer);
+    }
+
+    trace_ot_timer_update_clock(s->ot_id, s->pclk);
+    /* TODO: @loic: update on-going timer */
 }
 
 static uint64_t ot_timer_read(void *opaque, hwaddr addr, unsigned size)
@@ -306,10 +335,12 @@ static void ot_timer_write(void *opaque, hwaddr addr, uint64_t value,
          * schedule the timer for the next peripheral clock tick to check again
          * for interrupt condition
          */
-        int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-        int64_t next = ot_timer_compute_next_timeout(s, now, 0);
-        trace_ot_timer_timer_mod(s->ot_id, now, next, true);
-        timer_mod_anticipate(s->timer, next);
+        if (s->pclk) {
+            int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            int64_t next = ot_timer_compute_next_timeout(s, now, 0);
+            trace_ot_timer_timer_mod(s->ot_id, now, next, true);
+            timer_mod_anticipate(s->timer, next);
+        }
         break;
     }
     case R_INTR_TEST0:
@@ -357,7 +388,9 @@ static const MemoryRegionOps ot_timer_ops = {
 
 static Property ot_timer_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtTimerState, ot_id),
-    DEFINE_PROP_UINT32("pclk", OtTimerState, pclk, 0u),
+    DEFINE_PROP_STRING("clock-name", OtTimerState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtTimerState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -379,6 +412,16 @@ static void ot_timer_reset_enter(Object *obj, ResetType type)
 
     ot_timer_update_irqs(s);
     ot_timer_update_alert(s);
+
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq = qdev_get_gpio_in_named(DEVICE(s), "clock-in", 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+    }
 }
 
 static void ot_timer_realize(DeviceState *dev, Error **errp)
@@ -387,7 +430,11 @@ static void ot_timer_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
-    g_assert(s->pclk > 0);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+    OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_timer_clock_input, "clock-in", 1);
 }
 
 static void ot_timer_init(Object *obj)
