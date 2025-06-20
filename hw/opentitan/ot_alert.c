@@ -26,6 +26,7 @@
  *
  * Note: for now, only a minimalist subset of Alert Handler device is
  *       implemented in order to enable OpenTitan's ROM boot to progress
+ *       secondary clock source is not supported (secure.io_div4)
  */
 
 #include "qemu/osdep.h"
@@ -34,11 +35,13 @@
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
@@ -214,6 +217,12 @@ typedef enum {
     STATE_COUNT,
 } OtAlertAClassState;
 
+typedef enum {
+    OT_ALERT_CLOCK_SRC_IO,
+    OT_ALERT_CLOCK_SRC_EDN,
+    OT_ALERT_CLOCK_SRC_COUNT
+} OtAonTimerClockSrc;
+
 struct OtAlertState {
     SysBusDevice parent_obj;
 
@@ -227,10 +236,13 @@ struct OtAlertState {
     char **reg_names; /* ordered by register index */
     unsigned reg_count; /* total count of registers */
     unsigned reg_aclass_pos; /* index of the first register of OtAlertAClass */
+    uint32_t pclks[OT_ALERT_CLOCK_SRC_COUNT];
+    const char *clock_src_names[OT_ALERT_CLOCK_SRC_COUNT];
 
     char *ot_id;
     OtEDNState *edn;
-    uint32_t pclk;
+    char *clock_names[OT_ALERT_CLOCK_SRC_COUNT];
+    DeviceState *clock_src;
     uint16_t n_alerts;
     uint8_t edn_ep;
     uint8_t n_low_power_groups;
@@ -395,9 +407,9 @@ static uint32_t ot_alert_reg_esc_count_read(OtAlertState *s, unsigned reg)
     }
 
     uint32_t cnt;
-    if (expire >= now) {
-        uint64_t rem64 =
-            muldiv64(expire - now, s->pclk, NANOSECONDS_PER_SECOND);
+    if ((expire >= now) && (s->pclks[OT_ALERT_CLOCK_SRC_IO] != 0)) {
+        uint64_t rem64 = muldiv64(expire - now, s->pclks[OT_ALERT_CLOCK_SRC_IO],
+                                  NANOSECONDS_PER_SECOND);
         uint32_t rem32 = (uint32_t)MIN(rem64, (uint64_t)UINT32_MAX);
         cnt = (rem32 < cycles) ? cycles - rem32 : 0;
     } else {
@@ -478,9 +490,15 @@ ot_alert_reg_intr_state_write(OtAlertState *s, unsigned reg, uint32_t value)
 static void ot_alert_set_class_timer(OtAlertState *s, unsigned nclass,
                                      uint32_t timeout)
 {
+    if (s->pclks[OT_ALERT_CLOCK_SRC_IO] == 0) {
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: no clock\n", __func__,
+                      s->ot_id);
+        return;
+    }
     OtAlertScheduler *atimer = &s->schedulers[nclass];
     /* TODO: update running schedulers if timeout_cyc_shadowed is updated */
-    int64_t ns = (int64_t)muldiv64(timeout, NANOSECONDS_PER_SECOND, s->pclk);
+    int64_t ns = (int64_t)muldiv64(timeout, NANOSECONDS_PER_SECOND,
+                                   s->pclks[OT_ALERT_CLOCK_SRC_IO]);
 
     OtAlertAClassState state = ot_alert_get_class_state(s, nclass);
     trace_ot_alert_set_class_timer(s->ot_id, ACLASS(nclass), ST_NAME(state),
@@ -776,6 +794,17 @@ static void ot_alert_signal_tx(void *opaque, int n, int level)
     ot_alert_update_irqs(s);
 }
 
+static void ot_alert_clock_input(void *opaque, int irq, int level)
+{
+    OtAlertState *s = opaque;
+
+    g_assert((unsigned)irq < OT_ALERT_CLOCK_SRC_COUNT);
+
+    s->pclks[irq] = (unsigned)level;
+
+    /* TODO: reinitialize timers on PCLK change */
+}
+
 static uint64_t ot_alert_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtAlertState *s = opaque;
@@ -964,7 +993,12 @@ static Property ot_alert_properties[] = {
     DEFINE_PROP_UINT16("n_alerts", OtAlertState, n_alerts, 0),
     DEFINE_PROP_UINT8("n_lpg", OtAlertState, n_low_power_groups, 1u),
     DEFINE_PROP_UINT8("n_classes", OtAlertState, n_classes, 4u),
-    DEFINE_PROP_UINT32("pclk", OtAlertState, pclk, 0u),
+    DEFINE_PROP_STRING("clock-name", OtAlertState,
+                       clock_names[OT_ALERT_CLOCK_SRC_IO]),
+    DEFINE_PROP_STRING("clock-name-edn", OtAlertState,
+                       clock_names[OT_ALERT_CLOCK_SRC_EDN]),
+    DEFINE_PROP_LINK("clock-src", OtAlertState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_LINK("edn", OtAlertState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtAlertState, edn_ep, UINT8_MAX),
     DEFINE_PROP_END_OF_LIST(),
@@ -1011,6 +1045,21 @@ static void ot_alert_reset_enter(Object *obj, ResetType type)
     }
 
     ot_alert_update_irqs(s);
+
+    for (unsigned ix = 0; ix < OT_ALERT_CLOCK_SRC_COUNT; ix++) {
+        if (s->clock_src_names[ix]) {
+            continue;
+        }
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_names[ix] = ic->get_clock_source(ii, s->clock_names[ix],
+                                                      DEVICE(s), &error_fatal);
+        qemu_irq in_irq =
+            qdev_get_gpio_in_named(DEVICE(s), "clock-in", (int)ix);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_names[ix], 0,
+                                    in_irq);
+    }
 }
 
 static void ot_alert_realize(DeviceState *dev, Error **errp)
@@ -1021,8 +1070,15 @@ static void ot_alert_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->ot_id);
     g_assert(s->n_alerts != 0);
-    g_assert(s->pclk != 0);
     g_assert(s->n_classes > 0 && s->n_classes <= 32);
+    for (unsigned ix = 0; ix < OT_ALERT_CLOCK_SRC_COUNT; ix++) {
+        g_assert(s->clock_names[ix]);
+    }
+    g_assert(s->clock_src);
+    OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_alert_clock_input, "clock-in",
+                            OT_ALERT_CLOCK_SRC_COUNT);
 
     size_t size = sizeof(OtAlertIntr) + sizeof(OtAlertPing) +
                   sizeof(OtAlertTemplate) * s->n_alerts +
