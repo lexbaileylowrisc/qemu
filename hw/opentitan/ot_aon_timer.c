@@ -33,11 +33,13 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/timer.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_aon_timer.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
@@ -99,6 +101,12 @@ static const char REG_NAMES[REGS_COUNT][20u] = {
 };
 #undef REG_NAME_ENTRY
 
+typedef enum {
+    OT_AON_TIMER_CLOCK_SRC_IO,
+    OT_AON_TIMER_CLOCK_SRC_AON,
+    OT_AON_TIMER_CLOCK_SRC_COUNT
+} OtAonTimerClockSrc;
+
 struct OtAonTimerState {
     SysBusDevice parent_obj;
 
@@ -119,9 +127,12 @@ struct OtAonTimerState {
     int64_t wkup_origin_ns;
     int64_t wdog_origin_ns;
     bool wdog_bite;
+    uint32_t pclks[OT_AON_TIMER_CLOCK_SRC_COUNT];
+    const char *clock_src_names[OT_AON_TIMER_CLOCK_SRC_COUNT];
 
     char *ot_id;
-    uint32_t pclk;
+    char *clock_names[OT_AON_TIMER_CLOCK_SRC_COUNT];
+    DeviceState *clock_src;
 };
 
 struct OtAonTimerClass {
@@ -132,15 +143,17 @@ struct OtAonTimerClass {
 static uint64_t
 ot_aon_timer_ns_to_ticks(OtAonTimerState *s, uint32_t prescaler, int64_t ns)
 {
-    uint64_t ticks = muldiv64((uint64_t)ns, s->pclk, NANOSECONDS_PER_SECOND);
+    uint64_t ticks =
+        muldiv64((uint64_t)ns, s->pclks[OT_AON_TIMER_CLOCK_SRC_AON],
+                 NANOSECONDS_PER_SECOND);
     return ticks / (prescaler + 1u);
 }
 
 static int64_t
 ot_aon_timer_ticks_to_ns(OtAonTimerState *s, uint32_t prescaler, uint64_t ticks)
 {
-    uint64_t ns =
-        muldiv64(ticks * (prescaler + 1u), NANOSECONDS_PER_SECOND, s->pclk);
+    uint64_t ns = muldiv64(ticks * (prescaler + 1u), NANOSECONDS_PER_SECOND,
+                           s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]);
     if (ns > INT64_MAX) {
         return INT64_MAX;
     }
@@ -170,8 +183,11 @@ static int64_t ot_aon_timer_compute_next_timeout(OtAonTimerState *s,
 {
     int64_t next;
 
+    g_assert(s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]);
+
     /* wait at least 1 peripheral clock tick */
-    delta = MAX(delta, (int64_t)(NANOSECONDS_PER_SECOND / s->pclk));
+    delta = MAX(delta, (int64_t)(NANOSECONDS_PER_SECOND /
+                                 s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]));
 
     if (sadd64_overflow(now, delta, &next)) {
         /* we overflowed the timer, just set it as large as we can */
@@ -219,6 +235,10 @@ static void ot_aon_timer_rearm_wkup(OtAonTimerState *s, bool reset_origin)
 {
     timer_del(s->wkup_timer);
 
+    if (!s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]) {
+        return;
+    }
+
     int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
 
     if (reset_origin) {
@@ -260,6 +280,10 @@ static void ot_aon_timer_wkup_cb(void *opaque)
 static void ot_aon_timer_rearm_wdog(OtAonTimerState *s, bool reset_origin)
 {
     int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+
+    if (!s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]) {
+        return;
+    }
 
     if (reset_origin) {
         s->wdog_origin_ns = now;
@@ -313,6 +337,26 @@ static void ot_aon_timer_wdog_cb(void *opaque)
     OtAonTimerState *s = opaque;
     ot_aon_timer_rearm_wdog(s, false);
 }
+
+static void ot_aon_timer_clock_input(void *opaque, int irq, int level)
+{
+    OtAonTimerState *s = opaque;
+
+    g_assert((unsigned)irq < OT_AON_TIMER_CLOCK_SRC_COUNT);
+
+    s->pclks[irq] = (unsigned)level;
+
+    if (irq == OT_AON_TIMER_CLOCK_SRC_AON) {
+        if (!s->pclks[irq]) {
+            timer_del(s->wkup_timer);
+            timer_del(s->wdog_timer);
+        }
+    }
+
+    trace_ot_aon_timer_update_clock(s->ot_id, irq, s->pclks[irq]);
+    /* TODO: @loic: update on-going timer */
+}
+
 
 static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -370,8 +414,8 @@ static uint64_t ot_aon_timer_read(void *opaque, hwaddr addr, unsigned size)
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_aon_timer_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
-                                pc);
+    trace_ot_aon_timer_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg),
+                                   val32, pc);
 
     return (uint64_t)val32;
 }
@@ -386,8 +430,8 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_aon_timer_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
-                             pc);
+    trace_ot_aon_timer_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                                pc);
 
     switch (reg) {
     case R_ALERT_TEST:
@@ -406,12 +450,15 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
             } else {
                 /* stop timer */
                 timer_del(s->wkup_timer);
-                /* save current count */
-                int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-                uint64_t count = ot_aon_timer_get_wkup_count(s, (uint64_t)now);
-                s->regs[R_WKUP_COUNT_HI] = (uint32_t)(count >> 32u);
-                s->regs[R_WKUP_COUNT_LO] = (uint32_t)count;
-                s->wkup_origin_ns = now;
+                if (s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]) {
+                    /* save current count */
+                    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+                    uint64_t count =
+                        ot_aon_timer_get_wkup_count(s, (uint64_t)now);
+                    s->regs[R_WKUP_COUNT_HI] = (uint32_t)(count >> 32u);
+                    s->regs[R_WKUP_COUNT_LO] = (uint32_t)count;
+                    s->wkup_origin_ns = now;
+                }
             }
         }
         break;
@@ -443,10 +490,13 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
                 } else {
                     /* stop timer */
                     timer_del(s->wdog_timer);
-                    /* save current count */
-                    int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-                    s->regs[R_WDOG_COUNT] = ot_aon_timer_get_wdog_count(s, now);
-                    s->wdog_origin_ns = now;
+                    if (s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]) {
+                        /* save current count */
+                        int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+                        s->regs[R_WDOG_COUNT] =
+                            ot_aon_timer_get_wdog_count(s, now);
+                        s->wdog_origin_ns = now;
+                    }
                 }
             }
         } else {
@@ -478,13 +528,15 @@ static void ot_aon_timer_write(void *opaque, hwaddr addr, uint64_t value,
          * schedule the timer for the next peripheral clock tick to check again
          * for interrupt condition
          */
-        int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
-        int64_t next = ot_aon_timer_compute_next_timeout(s, now, 0);
-        if (change & INTR_WKUP_TIMER_EXPIRED_MASK) {
-            timer_mod_anticipate(s->wkup_timer, next);
-        }
-        if (change & INTR_WDOG_TIMER_BARK_MASK) {
-            timer_mod_anticipate(s->wdog_timer, next);
+        if (s->pclks[OT_AON_TIMER_CLOCK_SRC_AON]) {
+            int64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
+            int64_t next = ot_aon_timer_compute_next_timeout(s, now, 0);
+            if (change & INTR_WKUP_TIMER_EXPIRED_MASK) {
+                timer_mod_anticipate(s->wkup_timer, next);
+            }
+            if (change & INTR_WDOG_TIMER_BARK_MASK) {
+                timer_mod_anticipate(s->wdog_timer, next);
+            }
         }
         break;
     }
@@ -511,7 +563,12 @@ static const MemoryRegionOps ot_aon_timer_ops = {
 
 static Property ot_aon_timer_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAonTimerState, ot_id),
-    DEFINE_PROP_UINT32("pclk", OtAonTimerState, pclk, 0u),
+    DEFINE_PROP_STRING("clock-name", OtAonTimerState,
+                       clock_names[OT_AON_TIMER_CLOCK_SRC_IO]),
+    DEFINE_PROP_STRING("clock-name-aon", OtAonTimerState,
+                       clock_names[OT_AON_TIMER_CLOCK_SRC_AON]),
+    DEFINE_PROP_LINK("clock-src", OtAonTimerState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -533,6 +590,21 @@ static void ot_aon_timer_reset_enter(Object *obj, ResetType type)
 
     ot_aon_timer_update_irqs(s);
     ot_aon_timer_update_alert(s);
+
+    for (unsigned ix = 0; ix < OT_AON_TIMER_CLOCK_SRC_COUNT; ix++) {
+        if (s->clock_src_names[ix]) {
+            continue;
+        }
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_names[ix] = ic->get_clock_source(ii, s->clock_names[ix],
+                                                      DEVICE(s), &error_fatal);
+        qemu_irq in_irq =
+            qdev_get_gpio_in_named(DEVICE(s), "clock-in", (int)ix);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_names[ix], 0,
+                                    in_irq);
+    }
 }
 
 static void ot_aon_timer_realize(DeviceState *dev, Error **errp)
@@ -542,7 +614,14 @@ static void ot_aon_timer_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
-    g_assert(s->pclk > 0);
+    for (unsigned ix = 0; ix < OT_AON_TIMER_CLOCK_SRC_COUNT; ix++) {
+        g_assert(s->clock_names[ix]);
+    }
+    g_assert(s->clock_src);
+    OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_aon_timer_clock_input, "clock-in",
+                            OT_AON_TIMER_CLOCK_SRC_COUNT);
 }
 
 static void ot_aon_timer_init(Object *obj)
