@@ -34,6 +34,7 @@
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qapi/error.h"
 #include "chardev/char-fe.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
@@ -41,6 +42,7 @@
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
@@ -157,9 +159,12 @@ struct OtUARTState {
     Fifo8 rx_fifo;
     uint32_t tx_watermark_level;
     guint watch_tag;
+    unsigned pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
 
     char *ot_id;
-    uint32_t pclk;
+    char *clock_name;
+    DeviceState *clock_src;
     CharBackend chr;
 };
 
@@ -168,7 +173,7 @@ struct OtUARTClass {
     ResettablePhases parent_phases;
 };
 
-static uint32_t ot_uart_get_tx_watermark_level(OtUARTState *s)
+static uint32_t ot_uart_get_tx_watermark_level(const OtUARTState *s)
 {
     uint32_t tx_ilvl = (s->regs[R_FIFO_CTRL] & R_FIFO_CTRL_TXILVL_MASK) >>
                        R_FIFO_CTRL_TXILVL_SHIFT;
@@ -176,7 +181,7 @@ static uint32_t ot_uart_get_tx_watermark_level(OtUARTState *s)
     return tx_ilvl < 7u ? (1u << tx_ilvl) : 64u;
 }
 
-static uint32_t ot_uart_get_rx_watermark_level(OtUARTState *s)
+static uint32_t ot_uart_get_rx_watermark_level(const OtUARTState *s)
 {
     uint32_t rx_ilvl = (s->regs[R_FIFO_CTRL] & R_FIFO_CTRL_RXILVL_MASK) >>
                        R_FIFO_CTRL_RXILVL_SHIFT;
@@ -197,19 +202,31 @@ static void ot_uart_update_irqs(OtUARTState *s)
     }
 }
 
-static bool ot_uart_is_sys_loopack_enabled(OtUARTState *s)
+static bool ot_uart_is_sys_loopack_enabled(const OtUARTState *s)
 {
     return (bool)FIELD_EX32(s->regs[R_CTRL], CTRL, SLPBK);
 }
 
-static bool ot_uart_is_tx_enabled(OtUARTState *s)
+static bool ot_uart_is_tx_enabled(const OtUARTState *s)
 {
     return (bool)FIELD_EX32(s->regs[R_CTRL], CTRL, TX);
 }
 
-static bool ot_uart_is_rx_enabled(OtUARTState *s)
+static bool ot_uart_is_rx_enabled(const OtUARTState *s)
 {
     return (bool)FIELD_EX32(s->regs[R_CTRL], CTRL, RX);
+}
+
+static void ot_uart_check_baudrate(const OtUARTState *s)
+{
+    uint32_t nco = FIELD_EX32(s->regs[R_CTRL], CTRL, NCO);
+
+    unsigned baudrate = (unsigned)(((uint64_t)nco * (uint64_t)s->pclk) >>
+                                   (R_CTRL_NCO_LENGTH + 4));
+
+    if (baudrate) {
+        trace_ot_uart_check_baudrate(s->ot_id, s->pclk, baudrate);
+    }
 }
 
 static void ot_uart_reset_rx_fifo(OtUARTState *s)
@@ -381,6 +398,18 @@ static void uart_write_tx_fifo(OtUARTState *s, uint8_t val)
     }
 }
 
+static void ot_uart_clock_input(void *opaque, int irq, int level)
+{
+    OtUARTState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    /* TODO: disable UART transfer when PCLK is 0 */
+    ot_uart_check_baudrate(s);
+}
+
 static uint64_t ot_uart_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtUARTState *s = opaque;
@@ -507,6 +536,9 @@ static void ot_uart_write(void *opaque, hwaddr addr, uint64_t val64,
         uint32_t prev = s->regs[R_CTRL];
         s->regs[R_CTRL] = val32 & CTRL_MASK;
         uint32_t change = prev ^ s->regs[R_CTRL];
+        if (change & R_CTRL_NCO_MASK) {
+            ot_uart_check_baudrate(s);
+        }
         if ((change & R_CTRL_RX_MASK) && ot_uart_is_rx_enabled(s) &&
             !ot_uart_is_sys_loopack_enabled(s)) {
             qemu_chr_fe_accept_input(&s->chr);
@@ -568,7 +600,9 @@ static const MemoryRegionOps ot_uart_ops = {
 static Property ot_uart_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtUARTState, ot_id),
     DEFINE_PROP_CHR("chardev", OtUARTState, chr),
-    DEFINE_PROP_UINT32("pclk", OtUARTState, pclk, 0u),
+    DEFINE_PROP_STRING("clock-name", OtUARTState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtUARTState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -609,6 +643,17 @@ static void ot_uart_reset_enter(Object *obj, ResetType type)
 
     ot_uart_update_irqs(s);
     ibex_irq_set(&s->alert, 0);
+
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq = qdev_get_gpio_in_named(DEVICE(s), "clock-in", 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+        trace_ot_uart_connect_input_clock(s->ot_id, s->clock_src_name);
+    }
 }
 
 static void ot_uart_realize(DeviceState *dev, Error **errp)
@@ -617,7 +662,11 @@ static void ot_uart_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
-    g_assert(s->pclk);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+    OBJECT_CHECK(IbexClockSrcIf, s->clock_src, TYPE_IBEX_CLOCK_SRC_IF);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_uart_clock_input, "clock-in", 1);
 
     fifo8_create(&s->tx_fifo, OT_UART_TX_FIFO_SIZE);
     fifo8_create(&s->rx_fifo, OT_UART_RX_FIFO_SIZE);
