@@ -33,12 +33,15 @@
 #include "qemu/log.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_ast_dj.h"
+#include "hw/opentitan/ot_clock_ctrl.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_random_src.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
+#include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "trace.h"
 
@@ -136,14 +139,27 @@ typedef struct {
     bool avail;
 } OtASTDjRandom;
 
+typedef struct {
+    char *name;
+    unsigned frequency;
+    IbexIRQ out;
+    bool aon;
+    bool active;
+} OtASTDjClock;
+
 struct OtASTDjState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
     OtASTDjRandom random;
 
+    GList *clocks; /* OtASTDjClock */
+
     uint32_t *regsa;
     uint32_t *regsb;
+
+    char *cfg_topclocks;
+    char *cfg_aonclocks;
 };
 
 struct OtASTDjClass {
@@ -198,6 +214,134 @@ static void ot_ast_dj_random_scheduler(void *opaque)
                                 OT_RANDOM_SRC_DWORD_COUNT * sizeof(uint64_t));
 
     rnd->avail = true;
+}
+
+
+static const char *CFGSEP = ",";
+
+static gint ot_ast_dj_match_clock_by_name(gconstpointer a, gconstpointer b)
+{
+    const OtASTDjClock *ca = a;
+    const OtASTDjClock *cb = b;
+
+    return strcmp(ca->name, cb->name);
+}
+
+static OtASTDjClock *ot_ast_dj_find_clock(OtASTDjState *s, const char *name)
+{
+    OtASTDjClock clock = { .name = (char *)name };
+
+    GList *glist =
+        g_list_find_custom(s->clocks, &clock, &ot_ast_dj_match_clock_by_name);
+
+    return glist ? glist->data : NULL;
+}
+
+static void ot_ast_dj_reset_clock(gpointer data, gpointer user_data)
+{
+    OtASTDjState *s = user_data;
+    OtASTDjClock *clk = data;
+    (void)s;
+
+    clk->active = clk->aon;
+}
+
+static void ot_ast_dj_update_clock(gpointer data, gpointer user_data)
+{
+    OtASTDjState *s = user_data;
+    OtASTDjClock *clk = data;
+    (void)s;
+
+    unsigned frequency = clk->active ? clk->frequency : 0;
+    trace_ot_ast_upate_clock(clk->name, frequency);
+
+    ibex_irq_set(&clk->out, (int)frequency);
+}
+
+static void ot_ast_dj_clock_enable(OtClockCtrlIf *dev, const char *clkname,
+                                   bool enable)
+{
+    OtASTDjState *s = OT_AST_DJ(dev);
+
+    OtASTDjClock *clk = ot_ast_dj_find_clock(s, clkname);
+    g_assert(clk);
+
+    clk->active = enable;
+    unsigned frequency = clk->active ? clk->frequency : 0;
+
+    trace_ot_ast_upate_clock(clk->name, frequency);
+
+    ibex_irq_set(&clk->out, (int)frequency);
+}
+
+static void ot_ast_dj_clock_ext_freq_select(OtClockCtrlIf *dev, bool enable)
+{
+    OtASTDjState *s = OT_AST_DJ(dev);
+
+    (void)s;
+
+    qemu_log_mask(LOG_UNIMP, "%s: not implemented: %u\n", __func__, enable);
+}
+
+static void ot_ast_dj_parse_clocks(OtASTDjState *s, Error **errp)
+{
+    if (!s->cfg_topclocks) {
+        error_setg(errp, "%s: topclocks config not defined", __func__);
+        return;
+    }
+
+    if (!s->cfg_aonclocks) {
+        error_setg(errp, "%s: aonclocks config not defined", __func__);
+        return;
+    }
+
+    char *config = g_strdup(s->cfg_topclocks);
+    for (char *clkbrk, *clkdesc = strtok_r(config, CFGSEP, &clkbrk); clkdesc;
+         clkdesc = strtok_r(NULL, CFGSEP, &clkbrk)) {
+        char clkname[16];
+        unsigned clkfreq = 0;
+        unsigned length = 0;
+        int ret;
+        /* NOLINTNEXTLINE(cert-err34-c) */
+        ret = sscanf(clkdesc, "%15[a-z0-9_]:%u%n", clkname, &clkfreq, &length);
+        if (ret != 2) {
+            error_setg(errp, "%s: invalid clock %s format: %d", __func__,
+                       clkdesc, ret);
+            g_free(config);
+            return;
+        }
+        if (clkdesc[length]) {
+            error_setg(errp, "%s: trailing chars in subclock %s", __func__,
+                       clkdesc);
+            g_free(config);
+            return;
+        }
+
+        OtASTDjClock *clk = g_new0(OtASTDjClock, 1u);
+        clk->name = strdup(clkname);
+        clk->frequency = clkfreq;
+        char *clock_name = g_strdup_printf("clock-out-%s", clk->name);
+        ibex_qdev_init_irq(OBJECT(s), &clk->out, clock_name);
+        s->clocks = g_list_append(s->clocks, clk);
+        trace_ot_ast_create_clock(clk->name, clk->frequency, clock_name);
+        g_free(clock_name);
+    }
+    g_free(config);
+
+    config = g_strdup(s->cfg_aonclocks);
+    for (char *clkbrk, *clkname = strtok_r(config, CFGSEP, &clkbrk); clkname;
+         clkname = strtok_r(NULL, CFGSEP, &clkbrk)) {
+        OtASTDjClock *clk = ot_ast_dj_find_clock(s, clkname);
+        if (!clk) {
+            error_setg(errp, "%s: invalid AON clock name %s", __func__,
+                       clkname);
+            return;
+        }
+
+        clk->aon = true;
+        clk->active = true;
+    }
+    g_free(config);
 }
 
 static uint64_t ot_ast_dj_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -339,6 +483,8 @@ static void ot_ast_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_ast_dj_properties[] = {
+    DEFINE_PROP_STRING("topclocks", OtASTDjState, cfg_topclocks),
+    DEFINE_PROP_STRING("aonclocks", OtASTDjState, cfg_aonclocks),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -405,6 +551,8 @@ static void ot_ast_dj_reset_enter(Object *obj, ResetType type)
     s->regsa[R_REGA36] = 0x24u;
     s->regsa[R_REGA37] = 0x25u;
     s->regsa[R_REGAL] = 0x26u;
+
+    g_list_foreach(s->clocks, ot_ast_dj_reset_clock, s);
 }
 
 static void ot_ast_dj_reset_exit(Object *obj, ResetType type)
@@ -419,6 +567,16 @@ static void ot_ast_dj_reset_exit(Object *obj, ResetType type)
 
     uint64_t now = qemu_clock_get_ns(OT_VIRTUAL_CLOCK);
     timer_mod(rnd->timer, (int64_t)(now + OT_AST_DJ_RANDOM_FILL_RATE_NS));
+
+    g_list_foreach(s->clocks, ot_ast_dj_update_clock, s);
+}
+
+static void ot_ast_dj_realize(DeviceState *dev, Error **errp)
+{
+    OtASTDjState *s = OT_AST_DJ(dev);
+    (void)errp;
+
+    ot_ast_dj_parse_clocks(s, &error_fatal);
 }
 
 static void ot_ast_dj_init(Object *obj)
@@ -443,6 +601,7 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
+    dc->realize = &ot_ast_dj_realize;
     device_class_set_props(dc, ot_ast_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
@@ -454,6 +613,10 @@ static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
 
     OtRandomSrcIfClass *rdc = OT_RANDOM_SRC_IF_CLASS(klass);
     rdc->get_random_values = &ot_ast_dj_get_random;
+
+    OtClockCtrlIfClass *cc = OT_CLOCK_CTRL_IF_CLASS(klass);
+    cc->clock_enable = &ot_ast_dj_clock_enable;
+    cc->clock_ext_freq_select = &ot_ast_dj_clock_ext_freq_select;
 }
 
 static const TypeInfo ot_ast_dj_info = {
@@ -466,6 +629,7 @@ static const TypeInfo ot_ast_dj_info = {
     .interfaces =
         (InterfaceInfo[]){
             { TYPE_OT_RANDOM_SRC_IF },
+            { TYPE_OT_CLOCK_CTRL_IF },
             {},
         },
 };
