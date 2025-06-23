@@ -414,8 +414,8 @@ class QEMUExecuter:
             raise ValueError('QEMU path is not defined')
         machine, xtype, fw_args, xexec = self._build_qemu_fw_args(args)
         qemu_args = [args.qemu, '-M', machine]
-        if args.otcfg:
-            qemu_args.extend(('-readconfig', self.abspath(args.otcfg)))
+        for otcfg in args.otcfg or []:
+            qemu_args.extend(('-readconfig', self.abspath(otcfg)))
         qemu_args.extend(fw_args)
         temp_files = defaultdict(set)
         if all((args.otp, args.otp_raw)):

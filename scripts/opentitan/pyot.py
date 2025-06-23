@@ -18,8 +18,7 @@ except ImportError as hjson_exc:
         """dummy func if HJSON module is not available"""
         return {}
 from os import close, linesep, unlink
-from os.path import (basename, dirname, isfile, join as joinpath, normpath,
-                     relpath)
+from os.path import dirname, isfile, join as joinpath, normpath, relpath
 from tempfile import mkstemp
 from time import sleep
 from traceback import format_exc
@@ -113,8 +112,8 @@ def main():
                            help='generate an eflash image file for MTD bus')
         files.add_argument('-f', '--flash', metavar='RAW',
                            help='SPI flash image file')
-        files.add_argument('-g', '--otcfg', metavar='file',
-                           help='configuration options for OpenTitan devices')
+        files.add_argument('-g', '--otcfg', metavar='CFGFILE', action='append',
+                           help='configuration option file for OT devices')
         files.add_argument('-H', '--no-flash-header', action='store_const',
                            const=True,
                            help='application and/or bootloader files contain '
@@ -153,16 +152,16 @@ def main():
         exe.add_argument('-Z', '--zero', action='store_true',
                          help='do not error if no test can be executed')
         extra = argparser.add_argument_group(title='Extras')
-        extra.add_argument('-v', '--verbose', action='count',
-                           help='increase verbosity')
-        extra.add_argument('-V', '--vcp-verbose', action='count',
-                           help='increase verbosity of QEMU virtual comm ports')
         extra.add_argument('-d', dest='dbg', action='store_true',
                            help='enable debug mode')
         extra.add_argument('--quiet', action='store_true',
                            help='quiet logging: only be verbose on errors')
-        extra.add_argument('--log-time', action='store_true',
+        extra.add_argument('-G', '--log-time', action='store_true',
                            help='show local time in log messages')
+        extra.add_argument('-V', '--vcp-verbose', action='count',
+                           help='increase verbosity of QEMU virtual comm ports')
+        extra.add_argument('-v', '--verbose', action='count',
+                           help='increase verbosity')
         extra.add_argument('--log-udp', type=int, metavar='UDP_PORT',
                            help='Change UDP port for log messages, '
                                 'use 0 to disable')
@@ -272,9 +271,10 @@ def main():
             qopts = getattr(args, 'opts') or []
             qopts.extend(cli_opts)
             setattr(args, 'opts', qopts)
-        if args.otcfg and not isfile(args.otcfg):
-            argparser.error(f'Invalid OpenTitan configuration file '
-                            f'{basename(args.otcfg)}')
+        for otcfg in args.otcfg or []:
+            if not isfile(otcfg):
+                argparser.error(f'Invalid OpenTitan configuration file '
+                                f'{otcfg}')
         # as the JSON configuration file may contain default value, the
         # argparser default method cannot be used to define default values, or
         # they would take precedence over the JSON defined ones

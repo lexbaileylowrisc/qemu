@@ -8,11 +8,11 @@
 usage: pyot.py [-h] [-A] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT]
                [-N LOG] [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
                [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON]
-               [-e BUS] [-f RAW] [-g file] [-H] [-K] [-l file] [-O RAW]
+               [-e BUS] [-f RAW] [-g CFGFILE] [-H] [-K] [-l file] [-O RAW]
                [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
-               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-v] [-V] [-d]
-               [--quiet] [--log-time] [--log-udp UDP_PORT] [--debug LOGGER]
-               [--info LOGGER] [--warn LOGGER]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-d] [--quiet] [-G]
+               [-V] [-v] [--log-udp UDP_PORT] [--debug LOGGER] [--info LOGGER]
+               [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -51,7 +51,7 @@ Files:
   -e, --embedded-flash BUS
                         generate an eflash image file for MTD bus
   -f, --flash RAW       SPI flash image file
-  -g, --otcfg file      configuration options for OpenTitan devices
+  -g, --otcfg CFGFILE   configuration option file for OT devices
   -H, --no-flash-header
                         application and/or bootloader files contain no OT
                         header
@@ -77,11 +77,11 @@ Execution:
   -Z, --zero            do not error if no test can be executed
 
 Extras:
-  -v, --verbose         increase verbosity
-  -V, --vcp-verbose     increase verbosity of QEMU virtual comm ports
   -d                    enable debug mode
   --quiet               quiet logging: only be verbose on errors
-  --log-time            show local time in log messages
+  -G, --log-time        show local time in log messages
+  -V, --vcp-verbose     increase verbosity of QEMU virtual comm ports
+  -v, --verbose         increase verbosity
   --log-udp UDP_PORT    Change UDP port for log messages, use 0 to disable
   --debug LOGGER        assign debug level to logger(s)
   --info LOGGER         assign info level to logger(s)
@@ -143,7 +143,7 @@ This tool may be used in two ways, which can be combined:
 * `-f` / `--flash` specify a RAW image file that stores the embedded Flash content, which can be
    generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
 * `-g` / `--otcfg` specify a configuration file with OpenTitan configuration options, such as
-   cryptographic constants (seeds, keys, nonces, ...).
+   clock definitions, cryptographic constants (seeds, keys, nonces, ...). May be repeated.
 * `-H` / `--no-flash-header` executable files should be considered as raw files with no OpenTitan flash headers.
 * `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
   is in charge of discarding any generated files and directories after execution. The paths to the
@@ -181,11 +181,11 @@ This tool may be used in two ways, which can be combined:
 
 ### Extras
 
+* `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
+* `-G` / `--log-time` show local time before each logged message
 * `-V` / `--vcp-verbose` can be repeated to increase verbosity of the QEMU virtual comm ports
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
-* `-d` only useful to debug the script, reports any Python traceback to the standard error stream.
 * `--quiet` only emit verbose log traces if an error is detected
-* `--log-time` show local time before each logged message
 * `--log-udp` change the port of the UDP log service on specified UDP port. Use `0` to disable the
   service.
 * `--debug` enable the debug level for the selected logger, may be repeated
