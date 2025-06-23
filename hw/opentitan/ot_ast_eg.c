@@ -32,10 +32,15 @@
 #include "qemu/guest-random.h"
 #include "qemu/log.h"
 #include "qemu/typedefs.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_ast_eg.h"
+#include "hw/opentitan/ot_clock_ctrl.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
+#include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "trace.h"
 
@@ -127,13 +132,28 @@ static const char REGB_NAMES[REGSB_COUNT][6U] = {
 };
 #undef REG_NAME_ENTRY
 
+typedef struct {
+    char *name;
+    unsigned frequency;
+    IbexIRQ out;
+    char *irq_name;
+    const DeviceState *sink;
+    bool aon;
+    bool active;
+} OtASTEgClock;
+
 struct OtASTEgState {
     SysBusDevice parent_obj;
 
     MemoryRegion mmio;
 
+    GList *clocks; /* OtASTEgClock */
+
     uint32_t *regsa;
     uint32_t *regsb;
+
+    char *cfg_topclocks;
+    char *cfg_aonclocks;
 };
 
 struct OtASTEgClass {
@@ -150,9 +170,156 @@ void ot_ast_eg_getrandom(void *buf, size_t len)
     qemu_guest_getrandom_nofail(buf, len);
 }
 
-/* -------------------------------------------------------------------------- */
-/* Private implementation */
-/* -------------------------------------------------------------------------- */
+
+static const char *CFGSEP = ",";
+
+static gint ot_ast_eg_match_clock_by_name(gconstpointer a, gconstpointer b)
+{
+    const OtASTEgClock *ca = a;
+    const OtASTEgClock *cb = b;
+
+    return strcmp(ca->name, cb->name);
+}
+
+static OtASTEgClock *ot_ast_eg_find_clock(OtASTEgState *s, const char *name)
+{
+    OtASTEgClock clock = { .name = (char *)name };
+
+    GList *glist =
+        g_list_find_custom(s->clocks, &clock, &ot_ast_eg_match_clock_by_name);
+
+    return glist ? glist->data : NULL;
+}
+
+static void ot_ast_eg_reset_clock(gpointer data, gpointer user_data)
+{
+    OtASTEgState *s = user_data;
+    OtASTEgClock *clk = data;
+    (void)s;
+
+    clk->active = clk->aon;
+}
+
+static void ot_ast_eg_update_clock(gpointer data, gpointer user_data)
+{
+    OtASTEgState *s = user_data;
+    OtASTEgClock *clk = data;
+    (void)s;
+
+    unsigned frequency = clk->active ? clk->frequency : 0;
+    trace_ot_ast_upate_clock(clk->name, frequency);
+
+    ibex_irq_set(&clk->out, (int)frequency);
+}
+
+static const char *
+ot_ast_eg_get_clock_source(IbexClockSrcIf *ifd, const char *name,
+                           const DeviceState *sink, Error **errp)
+{
+    OtASTEgState *s = OT_AST_EG(ifd);
+
+    OtASTEgClock *clk = ot_ast_eg_find_clock(s, name);
+    if (!clk) {
+        error_setg(errp, "%s: AST: no such clock: %s", __func__, name);
+        return NULL;
+    }
+
+    if (clk->sink && clk->sink != sink) {
+        error_setg(errp, "%s: AST supports a unique sink per clock: %s",
+                   __func__, name);
+        return NULL;
+    }
+
+    clk->sink = sink;
+
+    return clk->irq_name;
+}
+
+static void ot_ast_eg_clock_enable(OtClockCtrlIf *dev, const char *clkname,
+                                   bool enable)
+{
+    OtASTEgState *s = OT_AST_EG(dev);
+
+    OtASTEgClock *clk = ot_ast_eg_find_clock(s, clkname);
+    g_assert(clk);
+
+    clk->active = enable;
+    unsigned frequency = clk->active ? clk->frequency : 0;
+
+    trace_ot_ast_upate_clock(clk->name, frequency);
+
+    ibex_irq_set(&clk->out, (int)frequency);
+}
+
+static void ot_ast_eg_clock_ext_freq_select(OtClockCtrlIf *dev, bool enable)
+{
+    OtASTEgState *s = OT_AST_EG(dev);
+
+    (void)s;
+
+    qemu_log_mask(LOG_UNIMP, "%s: not implemented: %u\n", __func__, enable);
+}
+
+static void ot_ast_eg_parse_clocks(OtASTEgState *s, Error **errp)
+{
+    if (!s->cfg_topclocks) {
+        error_setg(errp, "%s: topclocks config not defined", __func__);
+        return;
+    }
+
+    if (!s->cfg_aonclocks) {
+        error_setg(errp, "%s: aonclocks config not defined", __func__);
+        return;
+    }
+
+    char *config = g_strdup(s->cfg_topclocks);
+    for (char *clkbrk, *clkdesc = strtok_r(config, CFGSEP, &clkbrk); clkdesc;
+         clkdesc = strtok_r(NULL, CFGSEP, &clkbrk)) {
+        char clkname[16];
+        unsigned clkfreq = 0;
+        unsigned length = 0;
+        int ret;
+        /* NOLINTNEXTLINE(cert-err34-c) */
+        ret = sscanf(clkdesc, "%15[a-z0-9_]:%u%n", clkname, &clkfreq, &length);
+        if (ret != 2) {
+            error_setg(errp, "%s: invalid clock %s format: %d", __func__,
+                       clkdesc, ret);
+            g_free(config);
+            return;
+        }
+        if (clkdesc[length]) {
+            error_setg(errp, "%s: trailing chars in subclock %s", __func__,
+                       clkdesc);
+            g_free(config);
+            return;
+        }
+
+        OtASTEgClock *clk = g_new0(OtASTEgClock, 1u);
+        clk->name = strdup(clkname);
+        clk->frequency = clkfreq;
+        clk->irq_name = g_strdup_printf("clock-out-%s", clk->name);
+        ibex_qdev_init_irq(OBJECT(s), &clk->out, clk->irq_name);
+        s->clocks = g_list_append(s->clocks, clk);
+        trace_ot_ast_create_clock(clk->name, clk->frequency, clk->irq_name);
+    }
+    g_free(config);
+
+    config = g_strdup(s->cfg_aonclocks);
+    for (char *clkbrk, *clkname = strtok_r(config, CFGSEP, &clkbrk); clkname;
+         clkname = strtok_r(NULL, CFGSEP, &clkbrk)) {
+        OtASTEgClock *clk = ot_ast_eg_find_clock(s, clkname);
+        if (!clk) {
+            error_setg(errp, "%s: invalid AON clock name %s", __func__,
+                       clkname);
+            return;
+        }
+
+        clk->aon = true;
+        clk->active = true;
+    }
+    g_free(config);
+}
+
 
 static uint64_t ot_ast_eg_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -293,6 +460,8 @@ static void ot_ast_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
 };
 
 static Property ot_ast_eg_properties[] = {
+    DEFINE_PROP_STRING("topclocks", OtASTEgState, cfg_topclocks),
+    DEFINE_PROP_STRING("aonclocks", OtASTEgState, cfg_aonclocks),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -354,6 +523,28 @@ static void ot_ast_eg_reset_enter(Object *obj, ResetType type)
     s->regsa[R_REGA36] = 0x24u;
     s->regsa[R_REGA37] = 0x25u;
     s->regsa[R_REGAL] = 0x26u;
+
+    g_list_foreach(s->clocks, ot_ast_eg_reset_clock, s);
+}
+
+static void ot_ast_eg_reset_exit(Object *obj, ResetType type)
+{
+    OtASTEgClass *c = OT_AST_EG_GET_CLASS(obj);
+    OtASTEgState *s = OT_AST_EG(obj);
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    g_list_foreach(s->clocks, ot_ast_eg_update_clock, s);
+}
+
+static void ot_ast_eg_realize(DeviceState *dev, Error **errp)
+{
+    OtASTEgState *s = OT_AST_EG(dev);
+    (void)errp;
+
+    ot_ast_eg_parse_clocks(s, &error_fatal);
 }
 
 static void ot_ast_eg_init(Object *obj)
@@ -373,13 +564,22 @@ static void ot_ast_eg_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
+    dc->realize = &ot_ast_eg_realize;
     device_class_set_props(dc, ot_ast_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtASTEgClass *ac = OT_AST_EG_CLASS(klass);
-    resettable_class_set_parent_phases(rc, &ot_ast_eg_reset_enter, NULL, NULL,
+    resettable_class_set_parent_phases(rc, &ot_ast_eg_reset_enter, NULL,
+                                       &ot_ast_eg_reset_exit,
                                        &ac->parent_phases);
+
+    IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_CLASS(klass);
+    ic->get_clock_source = &ot_ast_eg_get_clock_source;
+
+    OtClockCtrlIfClass *cc = OT_CLOCK_CTRL_IF_CLASS(klass);
+    cc->clock_enable = &ot_ast_eg_clock_enable;
+    cc->clock_ext_freq_select = &ot_ast_eg_clock_ext_freq_select;
 }
 
 static const TypeInfo ot_ast_eg_info = {
@@ -389,6 +589,12 @@ static const TypeInfo ot_ast_eg_info = {
     .instance_init = &ot_ast_eg_init,
     .class_size = sizeof(OtASTEgClass),
     .class_init = &ot_ast_eg_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_IBEX_CLOCK_SRC_IF },
+            { TYPE_OT_CLOCK_CTRL_IF },
+            {},
+        },
 };
 
 static void ot_ast_eg_register_types(void)

@@ -20,6 +20,8 @@ config OT_AST_DJ
     bool
 
 config OT_AST_EG
+    select IBEX_CLOCK_SRC
+    select OT_CLOCK_CTRL
     bool
 
 config OT_CLKMGR
