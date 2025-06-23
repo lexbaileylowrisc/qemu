@@ -23,6 +23,9 @@ config OT_AST_EG
 config OT_CLKMGR
     bool
 
+config OT_CLOCK_CTRL
+    bool
+
 config OT_COMMON
     bool
 
