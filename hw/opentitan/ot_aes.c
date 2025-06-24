@@ -34,6 +34,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_aes.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
@@ -42,6 +43,7 @@
 #include "hw/opentitan/ot_prng.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
@@ -128,6 +130,9 @@ REG32(STATUS, 0x84u)
 #define OT_AES_DATA_SIZE (PARAM_NUM_REGS_DATA * sizeof(uint32_t))
 #define OT_AES_KEY_SIZE  (PARAM_NUM_REGS_KEY * sizeof(uint32_t))
 #define OT_AES_IV_SIZE   (PARAM_NUM_REGS_IV * sizeof(uint32_t))
+
+#define OT_AES_CLOCK_ACTIVE "clock-active"
+#define OT_AES_CLOCK_INPUT  "clock-in"
 
 /* arbitrary value long enough to give back execution to vCPU */
 #define OT_AES_RETARD_DELAY_NS 10000u /* 10 us */
@@ -244,7 +249,7 @@ struct OtAESState {
     SysBusDevice parent_obj;
     MemoryRegion mmio;
     IbexIRQ alerts[PARAM_NUM_ALERTS];
-    IbexIRQ clkmgr;
+    IbexIRQ clock_active;
     QEMUBH *process_bh;
     QEMUTimer *retard_timer; /* only used with disabled fast-mode */
 
@@ -252,10 +257,14 @@ struct OtAESState {
     OtAESContext *ctx;
     OtAESEDN edn;
     OtPrngState *prng;
+    const char *clock_src_name; /* IRQ name once connected */
+    unsigned pclk; /* Current input clock */
     unsigned reseed_count;
     bool fast_mode;
 
     char *ot_id;
+    char *clock_name;
+    DeviceState *clock_src;
 };
 
 struct OtAESClass {
@@ -631,7 +640,7 @@ static void ot_aes_handle_trigger(OtAESState *s)
      */
     OtAESRegisters *r = s->regs;
 
-    ibex_irq_set(&s->clkmgr, (int)true);
+    ibex_irq_set(&s->clock_active, (int)true);
 
     if (r->trigger & R_TRIGGER_PRNG_RESEED_MASK) {
         trace_ot_aes_reseed(s->ot_id, "trigger write");
@@ -669,7 +678,7 @@ static void ot_aes_handle_trigger(OtAESState *s)
     }
 
     xtrace_ot_aes_debug(s->ot_id, ot_aes_is_idle(s) ? "IDLE" : "NOT IDLE");
-    ibex_irq_set(&s->clkmgr, (int)!ot_aes_is_idle(s));
+    ibex_irq_set(&s->clock_active, (int)!ot_aes_is_idle(s));
 }
 
 static void ot_aes_update_config(OtAESState *s)
@@ -1043,6 +1052,17 @@ static void ot_aes_reseed(OtAESState *s)
     }
 }
 
+static void ot_aes_clock_input(void *opaque, int irq, int level)
+{
+    OtAESState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    /* TODO: disable AES execution when PCLK is 0 */
+}
+
 static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtAESState *s = opaque;
@@ -1205,7 +1225,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
         r->data_in[reg - R_DATA_IN_0] = val32;
         set_bit((int64_t)(reg - R_DATA_IN_0), r->data_in_bm);
         if (ot_aes_is_data_in_ready(r)) {
-            ibex_irq_set(&s->clkmgr, (int)true);
+            ibex_irq_set(&s->clock_active, (int)true);
             ot_aes_pop(s);
         }
         if (!ot_aes_is_manual(r)) {
@@ -1279,6 +1299,9 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
 
 static Property ot_aes_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAESState, ot_id),
+    DEFINE_PROP_STRING("clock-name", OtAESState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtAESState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_LINK("edn", OtAESState, edn.device, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtAESState, edn.ep, UINT8_MAX),
     /*
@@ -1326,6 +1349,28 @@ static void ot_aes_reset_enter(Object *obj, ResetType type)
     for (unsigned ix = 0; ix < PARAM_NUM_ALERTS; ix++) {
         ibex_irq_set(&s->alerts[ix], 0);
     }
+
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq =
+            qdev_get_gpio_in_named(DEVICE(s), OT_AES_CLOCK_INPUT, 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+
+        if (object_dynamic_cast(OBJECT(s->clock_src), TYPE_OT_CLKMGR)) {
+            char *hint_name =
+                g_strdup_printf(OT_CLOCK_HINT_PREFIX "%s", s->clock_name);
+            qemu_irq hint_irq =
+                qdev_get_gpio_in_named(s->clock_src, hint_name, 0);
+            g_assert(hint_irq);
+            qdev_connect_gpio_out_named(DEVICE(s), OT_AES_CLOCK_ACTIVE, 0,
+                                        hint_irq);
+            g_free(hint_name);
+        }
+    }
 }
 
 static void ot_aes_reset_exit(Object *obj, ResetType type)
@@ -1352,6 +1397,12 @@ static void ot_aes_realize(DeviceState *dev, Error **errp)
 
     g_assert(e->device);
     g_assert(e->ep != UINT8_MAX);
+    g_assert(s->ot_id);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_aes_clock_input, OT_AES_CLOCK_INPUT,
+                            1);
 
     s->prng = ot_prng_allocate();
 }
@@ -1377,7 +1428,7 @@ static void ot_aes_init(Object *obj)
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
 
-    ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
+    ibex_qdev_init_irq(obj, &s->clock_active, OT_AES_CLOCK_ACTIVE);
 
     s->process_bh = qemu_bh_new(&ot_aes_handle_process, s);
     s->retard_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_aes_handle_process, s);
