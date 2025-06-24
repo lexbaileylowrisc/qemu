@@ -33,6 +33,11 @@
 #define TYPE_OT_CLKMGR "ot-clkmgr"
 OBJECT_DECLARE_TYPE(OtClkMgrState, OtClkMgrClass, OT_CLKMGR)
 
+#define OT_CLOCK_HINT_PREFIX "ot-clock-hint-"
+
+#define OT_CLKMGR_CLOCK_INPUT TYPE_OT_CLKMGR "-clock-in"
+
+/* deprecated definitions */
 typedef enum {
     OT_CLKMGR_HINT_AES,
     OT_CLKMGR_HINT_HMAC,

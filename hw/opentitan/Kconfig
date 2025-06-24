@@ -25,6 +25,7 @@ config OT_AST_EG
     bool
 
 config OT_CLKMGR
+    select IBEX_CLOCK_SRC
     bool
 
 config OT_CLOCK_CTRL
