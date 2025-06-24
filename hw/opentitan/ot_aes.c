@@ -254,6 +254,8 @@ struct OtAESState {
     OtPrngState *prng;
     unsigned reseed_count;
     bool fast_mode;
+
+    char *ot_id;
 };
 
 struct OtAESClass {
@@ -281,14 +283,14 @@ static const char *ot_aes_hexdump(OtAESState *s, const uint8_t *buf,
 }
 
 #define trace_ot_aes_buf(_s_, _a_, _m_, _b_) \
-    trace_ot_aes_buffer((_a_), (_m_), \
+    trace_ot_aes_buffer((_s_)->ot_id, (_a_), (_m_), \
                         ot_aes_hexdump(_s_, (const uint8_t *)(_b_), \
                                        OT_AES_DATA_SIZE))
 #define trace_ot_aes_key(_s_, _a_, _b_, _l_) \
-    trace_ot_aes_buffer((_a_), "key", \
+    trace_ot_aes_buffer((_s_)->ot_id, (_a_), "key", \
                         ot_aes_hexdump(_s_, (const uint8_t *)(_b_), (_l_)))
 #define trace_ot_aes_iv(_s_, _a_, _b_) \
-    trace_ot_aes_buffer((_a_), "iv", \
+    trace_ot_aes_buffer((_s_)->ot_id, (_a_), "iv", \
                         ot_aes_hexdump(_s_, (const uint8_t *)(_b_), \
                                        OT_AES_IV_SIZE))
 #else
@@ -296,9 +298,12 @@ static const char *ot_aes_hexdump(OtAESState *s, const uint8_t *buf,
 #define trace_ot_aes_key(_s_, _a_, _b_, _l_)
 #define trace_ot_aes_iv(_s_, _a_, _b_)
 #endif /* DEBUG_AES */
-#define xtrace_ot_aes_debug(_msg_) trace_ot_aes_debug(__func__, __LINE__, _msg_)
-#define xtrace_ot_aes_info(_msg_)  trace_ot_aes_info(__func__, __LINE__, _msg_)
-#define xtrace_ot_aes_error(_msg_) trace_ot_aes_error(__func__, __LINE__, _msg_)
+#define xtrace_ot_aes_debug(_otid_, _msg_) \
+    trace_ot_aes_debug(__func__, __LINE__, _otid_, _msg_)
+#define xtrace_ot_aes_info(_otid_, _msg_) \
+    trace_ot_aes_info(__func__, __LINE__, _otid_, _msg_)
+#define xtrace_ot_aes_error(_otid_, _msg_) \
+    trace_ot_aes_error(__func__, __LINE__, _otid_, _msg_)
 
 static void ot_aes_reseed(OtAESState *s);
 
@@ -406,7 +411,7 @@ static inline void ot_aes_load_reseed_rate(OtAESState *s)
         break;
     }
 
-    trace_ot_aes_reseed_rate(reseed);
+    trace_ot_aes_reseed_rate(s->ot_id, reseed);
 
     s->reseed_count = reseed;
 }
@@ -440,10 +445,10 @@ static void ot_aes_init_keyshare(OtAESState *s, bool randomize)
     OtAESContext *c = s->ctx;
 
     if (randomize) {
-        trace_ot_aes_init("keyshare init (randomize data)");
+        trace_ot_aes_init(s->ot_id, "keyshare init (randomize data)");
         ot_aes_randomize(s, r->keyshare, ARRAY_SIZE(r->keyshare));
     } else {
-        trace_ot_aes_init("keyshare init (data preserved)");
+        trace_ot_aes_init(s->ot_id, "keyshare init (data preserved)");
     }
     bitmap_zero(r->keyshare_bm, (int64_t)(PARAM_NUM_REGS_KEY * 2u));
     c->key_ready = false;
@@ -455,10 +460,10 @@ static void ot_aes_init_iv(OtAESState *s, bool randomize)
     OtAESContext *c = s->ctx;
 
     if (randomize) {
-        trace_ot_aes_init("iv init (randomize data)");
+        trace_ot_aes_init(s->ot_id, "iv init (randomize data)");
         ot_aes_randomize(s, r->iv, ARRAY_SIZE(r->iv));
     } else {
-        trace_ot_aes_init("iv init (data preserved)");
+        trace_ot_aes_init(s->ot_id, "iv init (data preserved)");
     }
     bitmap_zero(r->iv_bm, PARAM_NUM_REGS_IV);
     c->iv_ready = false;
@@ -469,11 +474,11 @@ static void ot_aes_init_data(OtAESState *s, bool io)
     OtAESRegisters *r = s->regs;
 
     if (!io) {
-        trace_ot_aes_init("data_in");
+        trace_ot_aes_init(s->ot_id, "data_in");
         ot_aes_randomize(s, r->data_in, ARRAY_SIZE(r->data_in));
         bitmap_zero(r->data_in_bm, PARAM_NUM_REGS_DATA);
     } else {
-        trace_ot_aes_init("data_out");
+        trace_ot_aes_init(s->ot_id, "data_out");
         ot_aes_randomize(s, r->data_out, ARRAY_SIZE(r->data_out));
         bitmap_zero(r->data_out_bm, PARAM_NUM_REGS_DATA);
     }
@@ -512,7 +517,7 @@ static void ot_aes_trigger_reseed(OtAESState *s)
         ot_aes_reseed(s);
     } else {
         r->trigger &= ~R_TRIGGER_PRNG_RESEED_MASK;
-        xtrace_ot_aes_info("reseed on trigger disabled");
+        xtrace_ot_aes_info(s->ot_id, "reseed on trigger disabled");
     }
 }
 
@@ -547,7 +552,7 @@ static void ot_aes_update_key(OtAESState *s)
 
     if (!c->key_ready && ot_aes_key_touch_force_reseed(r)) {
         r->trigger |= R_TRIGGER_PRNG_RESEED_MASK;
-        trace_ot_aes_reseed("new key");
+        trace_ot_aes_reseed(s->ot_id, "new key");
         ot_aes_trigger_reseed(s);
     }
 
@@ -579,19 +584,19 @@ static inline bool ot_aes_can_process(const OtAESState *s)
     bool need_iv;
 
     if (!ot_aes_is_mode_ready(r, &need_iv)) {
-        xtrace_ot_aes_debug("mode not ready");
+        xtrace_ot_aes_debug(s->ot_id, "mode not ready");
         return false;
     }
 
     OtAESContext *c = s->ctx;
 
     if (!c->key_ready) {
-        xtrace_ot_aes_debug("key not ready");
+        xtrace_ot_aes_debug(s->ot_id, "key not ready");
         return false;
     }
 
     if (need_iv && !c->iv_ready) {
-        xtrace_ot_aes_debug("IV not ready");
+        xtrace_ot_aes_debug(s->ot_id, "IV not ready");
         return false;
     }
 
@@ -599,19 +604,19 @@ static inline bool ot_aes_can_process(const OtAESState *s)
         /* auto mode */
         if (c->do_full) {
             /* cannot schedule a round if output FIFO has not been emptied */
-            xtrace_ot_aes_debug("DO full");
+            xtrace_ot_aes_debug(s->ot_id, "DO full");
             return false;
         }
     } else {
         if (!(r->trigger & R_TRIGGER_START_MASK)) {
             /* cannot execute in manual mode w/o an explicit trigger */
-            xtrace_ot_aes_debug("manual not triggered");
+            xtrace_ot_aes_debug(s->ot_id, "manual not triggered");
             return false;
         }
     }
 
     if (!c->di_full) {
-        xtrace_ot_aes_debug("DI not filled");
+        xtrace_ot_aes_debug(s->ot_id, "DI not filled");
     }
 
     /* TODO: not sure if this also applies in manual mode */
@@ -629,10 +634,10 @@ static void ot_aes_handle_trigger(OtAESState *s)
     ibex_irq_set(&s->clkmgr, (int)true);
 
     if (r->trigger & R_TRIGGER_PRNG_RESEED_MASK) {
-        trace_ot_aes_reseed("trigger write");
+        trace_ot_aes_reseed(s->ot_id, "trigger write");
         ot_aes_trigger_reseed(s);
         if (s->edn.scheduled) {
-            xtrace_ot_aes_debug("EDN scheduled, defer");
+            xtrace_ot_aes_debug(s->ot_id, "EDN scheduled, defer");
             return;
         }
     }
@@ -652,18 +657,18 @@ static void ot_aes_handle_trigger(OtAESState *s)
     if (r->trigger & R_TRIGGER_START_MASK) {
         if (ot_aes_get_mode(r) == AES_NONE || !ot_aes_is_manual(r)) {
             /* ignore */
-            xtrace_ot_aes_debug("start trigger ignored");
+            xtrace_ot_aes_debug(s->ot_id, "start trigger ignored");
             return;
         }
     }
 
     /* an AES round might have been delayed */
     if (ot_aes_can_process(s)) {
-        trace_ot_aes_schedule();
+        trace_ot_aes_schedule(s->ot_id);
         qemu_bh_schedule(s->process_bh);
     }
 
-    xtrace_ot_aes_debug(ot_aes_is_idle(s) ? "IDLE" : "NOT IDLE");
+    xtrace_ot_aes_debug(s->ot_id, ot_aes_is_idle(s) ? "IDLE" : "NOT IDLE");
     ibex_irq_set(&s->clkmgr, (int)!ot_aes_is_idle(s));
 }
 
@@ -673,7 +678,7 @@ static void ot_aes_update_config(OtAESState *s)
 
     bool need_iv;
 
-    xtrace_ot_aes_debug("CONFIG");
+    xtrace_ot_aes_debug(s->ot_id, "CONFIG");
 
     if (!ot_aes_is_mode_ready(r, &need_iv)) {
         return;
@@ -829,7 +834,7 @@ static void ot_aes_process(OtAESState *s)
 
     int rc;
 
-    xtrace_ot_aes_debug("process");
+    xtrace_ot_aes_debug(s->ot_id, "process");
 
     if (encrypt) {
         trace_ot_aes_buf(s, OT_AES_MODE_NAMES[mode], "enc/in ", c->src);
@@ -936,7 +941,7 @@ static inline void ot_aes_do_process(OtAESState *s)
          * otherwise, IDLE status may be false once the vCPU has read the data,
          * which would not match the HW behavior
          */
-        trace_ot_aes_reseed("reseed_count reached");
+        trace_ot_aes_reseed(s->ot_id, "reseed_count reached");
         s->regs->trigger |= R_TRIGGER_PRNG_RESEED_MASK;
         ot_aes_trigger_reseed(s);
         ot_aes_load_reseed_rate(s);
@@ -947,7 +952,7 @@ static inline void ot_aes_do_process(OtAESState *s)
 
     OtAESRegisters *r = s->regs;
     if (ot_aes_is_manual(r)) {
-        xtrace_ot_aes_info("end of manual seq");
+        xtrace_ot_aes_info(s->ot_id, "end of manual seq");
         s->regs->trigger &= ~R_TRIGGER_START_MASK;
     }
 }
@@ -980,7 +985,7 @@ static void ot_aes_process_cond(OtAESState *s)
             }
         }
     } else {
-        xtrace_ot_aes_info("defer exec, waiting for EDN");
+        xtrace_ot_aes_info(s->ot_id, "defer exec, waiting for EDN");
     }
 }
 
@@ -994,10 +999,10 @@ static void ot_aes_fill_entropy(void *opaque, uint32_t bits, bool fips)
     OtAESRegisters *r = s->regs;
 
     if (!edn->scheduled) {
-        xtrace_ot_aes_error("unexpected entropy");
+        xtrace_ot_aes_error(s->ot_id, "unexpected entropy");
         return;
     }
-    trace_ot_aes_fill_entropy(bits, fips);
+    trace_ot_aes_fill_entropy(s->ot_id, bits, fips);
     edn->scheduled = false;
     r->trigger &= ~R_TRIGGER_PRNG_RESEED_MASK;
 
@@ -1029,11 +1034,11 @@ static void ot_aes_reseed(OtAESState *s)
         edn->connected = true;
     }
     if (!edn->scheduled) {
-        trace_ot_aes_request_entropy();
+        trace_ot_aes_request_entropy(s->ot_id);
         if (!ot_edn_request_entropy(edn->device, edn->ep)) {
             edn->scheduled = true;
         } else {
-            xtrace_ot_aes_error("cannot request new entropy");
+            xtrace_ot_aes_error(s->ot_id, "cannot request new entropy");
         }
     }
 }
@@ -1072,8 +1077,8 @@ static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
     case R_DATA_IN_3:
     case R_TRIGGER:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0u;
         break;
     case R_IV_0:
@@ -1113,14 +1118,16 @@ static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
         }
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0u;
         break;
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_aes_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_aes_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                             pc);
 
     return (uint64_t)val32;
 };
@@ -1136,7 +1143,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_aes_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_aes_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_ALERT_TEST:
@@ -1154,8 +1161,8 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_DATA_OUT_3:
     case R_STATUS:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     case R_KEY_SHARE0_0:
     case R_KEY_SHARE0_1:
@@ -1263,13 +1270,15 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
         ot_aes_handle_trigger(s);
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 };
 
 static Property ot_aes_properties[] = {
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAESState, ot_id),
     DEFINE_PROP_LINK("edn", OtAESState, edn.device, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtAESState, edn.ep, UINT8_MAX),
     /*
@@ -1330,7 +1339,7 @@ static void ot_aes_reset_exit(Object *obj, ResetType type)
 
     qemu_bh_cancel(s->process_bh);
 
-    trace_ot_aes_reseed("reset");
+    trace_ot_aes_reseed(s->ot_id, "reset");
     ot_aes_handle_trigger(s);
 }
 
