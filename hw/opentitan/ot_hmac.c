@@ -32,12 +32,14 @@
 #include "qemu/fifo8.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_hmac.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "tomcrypt.h"
@@ -158,6 +160,9 @@ REG32(MSG_LENGTH_UPPER, 0xe8u)
 /* value representing 'KEY_NONE' in the config key length field */
 #define OT_HMAC_CFG_KEY_LENGTH_NONE 0x20u
 
+#define OT_HMAC_CLOCK_ACTIVE "clock-active"
+#define OT_HMAC_CLOCK_INPUT  "clock-in"
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_MSG_LENGTH_UPPER)
@@ -275,13 +280,17 @@ struct OtHMACState {
 
     IbexIRQ irqs[PARAM_NUM_IRQS];
     IbexIRQ alert;
-    IbexIRQ clkmgr;
+    IbexIRQ clock_active;
+    unsigned pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
 
     OtHMACRegisters *regs;
     OtHMACContext *ctx;
     Fifo8 input_fifo;
 
     char *ot_id;
+    char *clock_name;
+    DeviceState *clock_src;
 };
 
 struct OtHMACClass {
@@ -652,7 +661,7 @@ static void ot_hmac_process_fifo(OtHMACState *s)
 
     ot_hmac_update_irqs(s);
 
-    ibex_irq_set(&s->clkmgr,
+    ibex_irq_set(&s->clock_active,
                  !fifo8_is_empty(&s->input_fifo) || (bool)s->regs->cmd);
 }
 
@@ -662,6 +671,17 @@ static inline void ot_hmac_wipe_buffer(OtHMACState *s, uint32_t *buffer,
     for (unsigned index = 0; index < size; index++) {
         buffer[index] = s->regs->wipe_secret;
     }
+}
+
+static void ot_hmac_clock_input(void *opaque, int irq, int level)
+{
+    OtHMACState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    /* TODO: disable HMAC execution when PCLK is 0 */
 }
 
 static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -889,7 +909,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             s->regs->cmd = R_CMD_HASH_START_MASK;
             s->regs->msg_length = 0;
 
-            ibex_irq_set(&s->clkmgr, true);
+            ibex_irq_set(&s->clock_active, true);
 
             /*
              * Hold the previous digest size until the HMAC is started with the
@@ -936,7 +956,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             s->regs->cmd |= R_CMD_HASH_PROCESS_MASK;
 
             /* trigger delayed processing of FIFO */
-            ibex_irq_set(&s->clkmgr, true);
+            ibex_irq_set(&s->clock_active, true);
             ot_hmac_process_fifo(s);
         }
 
@@ -947,7 +967,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
              * trigger delayed processing of FIFO until the next block is
              * processed.
              */
-            ibex_irq_set(&s->clkmgr, true);
+            ibex_irq_set(&s->clock_active, true);
             ot_hmac_process_fifo(s);
         }
 
@@ -973,7 +993,7 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
             ot_hmac_restore_context(s);
 
             /* trigger delayed processing of FIFO */
-            ibex_irq_set(&s->clkmgr, true);
+            ibex_irq_set(&s->clock_active, true);
             ot_hmac_process_fifo(s);
         }
 
@@ -1160,7 +1180,7 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
         }
     }
 
-    ibex_irq_set(&s->clkmgr, true);
+    ibex_irq_set(&s->clock_active, true);
 
     for (unsigned i = 0; i < size; i++) {
         uint8_t b = value;
@@ -1189,6 +1209,9 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
 
 static Property ot_hmac_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtHMACState, ot_id),
+    DEFINE_PROP_STRING("clock-name", OtHMACState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtHMACState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1216,23 +1239,55 @@ static void ot_hmac_reset_enter(Object *obj, ResetType type)
 {
     OtHMACClass *c = OT_HMAC_GET_CLASS(obj);
     OtHMACState *s = OT_HMAC(obj);
-    OtHMACRegisters *r = s->regs;
 
     if (c->parent_phases.enter) {
         c->parent_phases.enter(obj, type);
     }
 
-    ibex_irq_set(&s->clkmgr, false);
+    ibex_irq_set(&s->clock_active, false);
 
     memset(s->ctx, 0, sizeof(*(s->ctx)));
     memset(s->regs, 0, sizeof(*(s->regs)));
-
-    r->cfg = 0x4100u;
 
     ot_hmac_update_irqs(s);
     ot_hmac_update_alert(s);
 
     fifo8_reset(&s->input_fifo);
+
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq =
+            qdev_get_gpio_in_named(DEVICE(s), OT_HMAC_CLOCK_INPUT, 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+
+        if (object_dynamic_cast(OBJECT(s->clock_src), TYPE_OT_CLKMGR)) {
+            char *hint_name =
+                g_strdup_printf(OT_CLOCK_HINT_PREFIX "%s", s->clock_name);
+            qemu_irq hint_irq =
+                qdev_get_gpio_in_named(s->clock_src, hint_name, 0);
+            g_assert(hint_irq);
+            qdev_connect_gpio_out_named(DEVICE(s), OT_HMAC_CLOCK_ACTIVE, 0,
+                                        hint_irq);
+            g_free(hint_name);
+        }
+    }
+}
+
+static void ot_hmac_reset_exit(Object *obj, ResetType type)
+{
+    OtHMACClass *c = OT_HMAC_GET_CLASS(obj);
+    OtHMACState *s = OT_HMAC(obj);
+    OtHMACRegisters *r = s->regs;
+
+    if (c->parent_phases.exit) {
+        c->parent_phases.exit(obj, type);
+    }
+
+    r->cfg = 0x4100u;
 }
 
 static void ot_hmac_realize(DeviceState *dev, Error **errp)
@@ -1242,6 +1297,11 @@ static void ot_hmac_realize(DeviceState *dev, Error **errp)
     OtHMACState *s = OT_HMAC(dev);
 
     g_assert(s->ot_id);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_hmac_clock_input,
+                            OT_HMAC_CLOCK_INPUT, 1);
 }
 
 static void ot_hmac_init(Object *obj)
@@ -1255,7 +1315,7 @@ static void ot_hmac_init(Object *obj)
         ibex_sysbus_init_irq(obj, &s->irqs[ix]);
     }
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
-    ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
+    ibex_qdev_init_irq(obj, &s->clock_active, OT_HMAC_CLOCK_ACTIVE);
 
     memory_region_init(&s->mmio, OBJECT(s), TYPE_OT_HMAC, OT_HMAC_WHOLE_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
@@ -1283,8 +1343,8 @@ static void ot_hmac_class_init(ObjectClass *klass, void *data)
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);
     OtHMACClass *hc = OT_HMAC_CLASS(klass);
-    resettable_class_set_parent_phases(rc, &ot_hmac_reset_enter, NULL, NULL,
-                                       &hc->parent_phases);
+    resettable_class_set_parent_phases(rc, &ot_hmac_reset_enter, NULL,
+                                       &ot_hmac_reset_exit, &hc->parent_phases);
 }
 
 static const TypeInfo ot_hmac_info = {
