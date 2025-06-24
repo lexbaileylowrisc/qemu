@@ -39,11 +39,13 @@
 #include "qemu/timer.h"
 #include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
+#include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "tomcrypt.h"
@@ -228,6 +230,9 @@ static const char *ERR_NAMES[] = {
 /* length of the whole device MMIO region */
 #define OT_KMAC_WHOLE_SIZE (OT_KMAC_MSG_FIFO_BASE + OT_KMAC_MSG_FIFO_SIZE)
 
+#define OT_KMAC_CLOCK_ACTIVE "clock-active"
+#define OT_KMAC_CLOCK_INPUT  "clock-in"
+
 #define R32_OFF(_r_) ((_r_) / sizeof(uint32_t))
 
 #define R_LAST_REG (R_ERR_CODE)
@@ -379,6 +384,7 @@ struct OtKMACState {
     MemoryRegion msgfifo_mmio;
     IbexIRQ irqs[3u];
     IbexIRQ alerts[KMAC_PARAM_NUM_ALERTS];
+    IbexIRQ clock_active;
 
     uint32_t *regs;
     OtShadowReg cfg;
@@ -391,6 +397,8 @@ struct OtKMACState {
 
     OtKMACAppCfg sw_cfg;
     OtKMACAppCfg *current_cfg;
+    unsigned pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
 
     OtKMACApp *apps;
     OtKMACApp *current_app;
@@ -401,6 +409,8 @@ struct OtKMACState {
     QEMUBH *bh;
 
     char *ot_id;
+    char *clock_name;
+    DeviceState *clock_src;
     OtEDNState *edn;
     uint8_t edn_ep;
     uint8_t num_app;
@@ -1020,6 +1030,17 @@ static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
     }
 }
 
+static void ot_kmac_clock_input(void *opaque, int irq, int level)
+{
+    OtKMACState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    /* TODO: disable KMAC execution when PCLK is 0 */
+}
+
 static uint64_t ot_kmac_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtKMACState *s = OT_KMAC(opaque);
@@ -1548,6 +1569,9 @@ static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
 
 static Property ot_kmac_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKMACState, ot_id),
+    DEFINE_PROP_STRING("clock-name", OtKMACState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtKMACState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_LINK("edn", OtKMACState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKMACState, edn_ep, UINT8_MAX),
     DEFINE_PROP_UINT8("num-app", OtKMACState, num_app, 0),
@@ -1610,6 +1634,28 @@ static void ot_kmac_reset_enter(Object *obj, ResetType type)
     ot_kmac_update_alert(s);
 
     fifo8_reset(&s->input_fifo);
+
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq =
+            qdev_get_gpio_in_named(DEVICE(s), OT_KMAC_CLOCK_INPUT, 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+
+        if (object_dynamic_cast(OBJECT(s->clock_src), TYPE_OT_CLKMGR)) {
+            char *hint_name =
+                g_strdup_printf(OT_CLOCK_HINT_PREFIX "%s", s->clock_name);
+            qemu_irq hint_irq =
+                qdev_get_gpio_in_named(s->clock_src, hint_name, 0);
+            g_assert(hint_irq);
+            qdev_connect_gpio_out_named(DEVICE(s), OT_KMAC_CLOCK_ACTIVE, 0,
+                                        hint_irq);
+            g_free(hint_name);
+        }
+    }
 }
 
 static void ot_kmac_realize(DeviceState *dev, Error **errp)
@@ -1618,6 +1664,9 @@ static void ot_kmac_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
+
     /* make sure num-app property is set */
     g_assert(s->num_app > 0);
 
@@ -1625,6 +1674,9 @@ static void ot_kmac_realize(DeviceState *dev, Error **errp)
     g_assert(s->num_app <= 32);
 
     s->apps = g_new0(OtKMACApp, s->num_app);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_kmac_clock_input,
+                            OT_KMAC_CLOCK_INPUT, 1);
 }
 
 static void ot_kmac_init(Object *obj)
@@ -1639,6 +1691,8 @@ static void ot_kmac_init(Object *obj)
     for (unsigned ix = 0; ix < ARRAY_SIZE(s->alerts); ix++) {
         ibex_qdev_init_irq(obj, &s->alerts[ix], OT_DEVICE_ALERT);
     }
+
+    ibex_qdev_init_irq(obj, &s->clock_active, OT_KMAC_CLOCK_ACTIVE);
 
     memory_region_init(&s->mmio, OBJECT(s), TYPE_OT_KMAC, OT_KMAC_WHOLE_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
