@@ -35,6 +35,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "qemu/typedefs.h"
+#include "qapi/error.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
@@ -44,6 +45,7 @@
 #include "hw/opentitan/otbn/otbnproxy.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
+#include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
@@ -99,6 +101,9 @@ REG32(LOAD_CHECKSUM, 0x28u)
 #define OT_OTBN_IMEM_BASE 0x4000u
 #define OT_OTBN_DMEM_BASE 0x8000u
 
+#define OT_OTBN_CLOCK_ACTIVE "clock-active"
+#define OT_OTBN_CLOCK_INPUT  "clock-in"
+
 #define R_LAST_REG (R_LOAD_CHECKSUM)
 #define REGS_COUNT (R_LAST_REG + 1u)
 #define REGS_SIZE  (REGS_COUNT * sizeof(uint32_t))
@@ -149,11 +154,13 @@ struct OtOTBNState {
 
     IbexIRQ irq_done;
     IbexIRQ alerts[ALERT_COUNT];
-    IbexIRQ clkmgr;
+    IbexIRQ clock_active;
 
     QEMUBH *proxy_completion_bh;
     QEMUTimer *proxy_defer;
     OTBNProxy proxy;
+    unsigned pclk; /* Current input clock */
+    const char *clock_src_name; /* IRQ name once connected */
 
     uint32_t intr_state;
     uint32_t intr_enable;
@@ -165,6 +172,8 @@ struct OtOTBNState {
     enum OtOTBNCommand last_cmd;
 
     char *ot_id;
+    char *clock_name;
+    DeviceState *clock_src;
     char *log_file;
     OtOTBNRandom rnds[OT_OTBN_RND_COUNT];
     bool log_asm;
@@ -217,7 +226,7 @@ static void ot_otbn_post_execute(void *opaque)
     ot_otbn_proxy_acknowledge_execution(s->proxy);
     ot_otbn_update_alert(s);
     ot_otbn_update_irq(s);
-    ibex_irq_set(&s->clkmgr, false);
+    ibex_irq_set(&s->clock_active, false);
 }
 
 static void ot_otbn_signal_on_completion(void *opaque)
@@ -386,7 +395,7 @@ static void ot_otbn_handle_command(OtOTBNState *s, unsigned command)
         return;
     }
 
-    ibex_irq_set(&s->clkmgr, true);
+    ibex_irq_set(&s->clock_active, true);
 
     switch (command) {
     case (unsigned)OT_OTBN_CMD_EXECUTE:
@@ -402,11 +411,22 @@ static void ot_otbn_handle_command(OtOTBNState *s, unsigned command)
         ot_otbn_proxy_wipe_memory(s->proxy, true);
         break;
     default:
-        ibex_irq_set(&s->clkmgr, false);
+        ibex_irq_set(&s->clock_active, false);
         qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid command %02X\n",
                       __func__, s->ot_id, s->last_cmd);
         break;
     }
+}
+
+static void ot_otbn_clock_input(void *opaque, int irq, int level)
+{
+    OtOTBNState *s = opaque;
+
+    g_assert(irq == 0);
+
+    s->pclk = (unsigned)level;
+
+    /* TODO: disable OTBN execution when PCLK is 0 */
 }
 
 static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -599,6 +619,9 @@ static inline void ot_otbn_dmem_write(void *opaque, hwaddr addr, uint64_t val64,
 
 static Property ot_otbn_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTBNState, ot_id),
+    DEFINE_PROP_STRING("clock-name", OtOTBNState, clock_name),
+    DEFINE_PROP_LINK("clock-src", OtOTBNState, clock_src, TYPE_DEVICE,
+                     DeviceState *),
     DEFINE_PROP_LINK("edn-u", OtOTBNState, rnds[OT_OTBN_URND].device,
                      TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_LINK("edn-r", OtOTBNState, rnds[OT_OTBN_RND].device,
@@ -666,6 +689,28 @@ static void ot_otbn_reset_enter(Object *obj, ResetType type)
         rnd->entropy_requested = false;
         ot_fifo32_reset(&rnd->packer);
     }
+
+    if (!s->clock_src_name) {
+        IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
+        IbexClockSrcIf *ii = IBEX_CLOCK_SRC_IF(s->clock_src);
+
+        s->clock_src_name =
+            ic->get_clock_source(ii, s->clock_name, DEVICE(s), &error_fatal);
+        qemu_irq in_irq =
+            qdev_get_gpio_in_named(DEVICE(s), OT_OTBN_CLOCK_INPUT, 0);
+        qdev_connect_gpio_out_named(s->clock_src, s->clock_src_name, 0, in_irq);
+
+        if (object_dynamic_cast(OBJECT(s->clock_src), TYPE_OT_CLKMGR)) {
+            char *hint_name =
+                g_strdup_printf(OT_CLOCK_HINT_PREFIX "%s", s->clock_name);
+            qemu_irq hint_irq =
+                qdev_get_gpio_in_named(s->clock_src, hint_name, 0);
+            g_assert(hint_irq);
+            qdev_connect_gpio_out_named(DEVICE(s), OT_OTBN_CLOCK_ACTIVE, 0,
+                                        hint_irq);
+            g_free(hint_name);
+        }
+    }
 }
 
 static void ot_otbn_reset_exit(Object *obj, ResetType type)
@@ -690,11 +735,16 @@ static void ot_otbn_realize(DeviceState *dev, Error **errp)
 
     OtOTBNState *s = OT_OTBN(dev);
     g_assert(s->ot_id);
+    g_assert(s->clock_name);
+    g_assert(s->clock_src);
 
     g_assert(s->rnds[OT_OTBN_URND].device);
     g_assert(s->rnds[OT_OTBN_RND].device);
     g_assert(s->rnds[OT_OTBN_URND].ep != UINT8_MAX);
     g_assert(s->rnds[OT_OTBN_RND].ep != UINT8_MAX);
+
+    qdev_init_gpio_in_named(DEVICE(s), &ot_otbn_clock_input,
+                            OT_OTBN_CLOCK_INPUT, 1);
 }
 
 static void ot_otbn_init(Object *obj)
@@ -726,7 +776,7 @@ static void ot_otbn_init(Object *obj)
 
     ibex_sysbus_init_irq(obj, &s->irq_done);
     ibex_qdev_init_irqs(obj, s->alerts, OT_DEVICE_ALERT, ALERT_COUNT);
-    ibex_qdev_init_irq(obj, &s->clkmgr, OT_CLOCK_ACTIVE);
+    ibex_qdev_init_irq(obj, &s->clock_active, OT_OTBN_CLOCK_ACTIVE);
 
     for (unsigned rix = 0; rix < (unsigned)OT_OTBN_RND_COUNT; rix++) {
         OtOTBNRandom *r = &s->rnds[rix];
