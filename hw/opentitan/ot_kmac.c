@@ -400,6 +400,7 @@ struct OtKMACState {
     QEMUTimer *bh_timer; /* timer to delay bh when triggered from vCPU */
     QEMUBH *bh;
 
+    char *ot_id;
     OtEDNState *edn;
     uint8_t edn_ep;
     uint8_t num_app;
@@ -413,12 +414,12 @@ ot_kmac_change_fsm_state_line(OtKMACState *s, OtKMACFsmState state, int line)
     }
 
     if (s->current_app) {
-        trace_ot_kmac_change_state_app(s->current_app->index, line,
+        trace_ot_kmac_change_state_app(s->ot_id, s->current_app->index, line,
                                        STATE_NAME(s->state), s->state,
                                        STATE_NAME(state), state);
     } else {
-        trace_ot_kmac_change_state_sw(line, STATE_NAME(s->state), s->state,
-                                      STATE_NAME(state), state);
+        trace_ot_kmac_change_state_sw(s->ot_id, line, STATE_NAME(s->state),
+                                      s->state, STATE_NAME(state), state);
     }
 
     s->state = state;
@@ -472,7 +473,7 @@ static void ot_kmac_update_alert(OtKMACState *s)
 
 static void ot_kmac_report_error(OtKMACState *s, int code, uint32_t info)
 {
-    trace_ot_kmac_report_error(code, ERR_NAME(code), info);
+    trace_ot_kmac_report_error(s->ot_id, code, ERR_NAME(code), info);
 
     uint32_t error = 0;
     error = FIELD_DP32(error, ERR_CODE, CODE, code);
@@ -661,7 +662,7 @@ static void ot_kmac_process(void *opaque)
             ot_kmac_change_fsm_state(s, KMAC_ST_IDLE);
             ot_kmac_reset_state(s);
             ot_kmac_cancel_bh(s);
-            trace_ot_kmac_app_finished(s->current_app->index);
+            trace_ot_kmac_app_finished(s->ot_id, s->current_app->index);
             s->current_app = NULL;
             /* now is a good time to check for pending app requests */
             ot_kmac_start_pending_app(s);
@@ -691,8 +692,9 @@ static inline bool ot_kmac_config_enabled(OtKMACState *s)
 static inline bool ot_kmac_check_reg_write(OtKMACState *s, hwaddr reg)
 {
     if (!ot_kmac_config_enabled(s)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Write to %s ignored while busy\n",
-                      __func__, REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: write to %s ignored while busy\n", __func__,
+                      s->ot_id, REG_NAME(reg));
         return false;
     }
 
@@ -896,7 +898,7 @@ static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
         return;
     }
 
-    trace_ot_kmac_process_sw_command(cmd, CMD_NAME(cmd));
+    trace_ot_kmac_process_sw_command(s->ot_id, cmd, CMD_NAME(cmd));
 
     switch (s->state) {
     case KMAC_ST_IDLE:
@@ -926,9 +928,9 @@ static void ot_kmac_process_sw_command(OtKMACState *s, int cmd)
                 s->sw_cfg.mode == OT_KMAC_MODE_KMAC) {
                 if (!ot_kmac_decode_sw_prefix(s)) {
                     qemu_log_mask(LOG_GUEST_ERROR,
-                                  "%s: Could not decode cSHAKE prefix, digest "
-                                  "result will be wrong!\n",
-                                  __func__);
+                                  "%s: %s: could not decode cSHAKE prefix, "
+                                  "digest result will be wrong!\n",
+                                  __func__, s->ot_id);
                     memset(&s->sw_cfg.prefix, 0, sizeof(s->sw_cfg.prefix));
                 }
             }
@@ -1120,19 +1122,21 @@ static uint64_t ot_kmac_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_KEY_SHARE1_15:
     case R_KEY_LEN:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: W/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: W/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         val32 = 0;
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0;
         break;
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_kmac_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_kmac_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     return (uint64_t)val32;
 }
@@ -1147,7 +1151,7 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_kmac_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_kmac_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     switch (reg) {
     case R_INTR_STATE:
@@ -1190,14 +1194,16 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
 
         if (val32 & R_CMD_ENTROPY_REQ_MASK) {
             /* TODO: implement entropy */
-            qemu_log_mask(LOG_UNIMP, "%s: CMD.ENTROPY_REQ is not supported\n",
-                          __func__);
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: CMD.ENTROPY_REQ is not supported\n",
+                          __func__, s->ot_id);
         }
 
         if (val32 & R_CMD_HASH_CNT_CLR_MASK) {
             /* TODO: implement entropy */
-            qemu_log_mask(LOG_UNIMP, "%s: CMD.HASH_CNT_CLR is not supported\n",
-                          __func__);
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: CMD.HASH_CNT_CLR is not supported\n",
+                          __func__, s->ot_id);
         }
 
         if (val32 & R_CMD_ERR_PROCESSED_MASK) {
@@ -1235,8 +1241,8 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         break;
     case R_ENTROPY_SEED:
         /* TODO: implement entropy */
-        qemu_log_mask(LOG_UNIMP, "%s: R_ENTROPY_SEED_* is not supported\n",
-                      __func__);
+        qemu_log_mask(LOG_UNIMP, "%s: %s: R_ENTROPY_SEED_* is not supported\n",
+                      __func__, s->ot_id);
         break;
     case R_KEY_LEN:
         if (!ot_kmac_check_reg_write(s, reg)) {
@@ -1246,8 +1252,8 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
         s->regs[reg] = val32;
         if (!ot_kmac_get_key_length(s)) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Invalid KEY_LEN=%d, using key length 0\n",
-                          __func__, val32);
+                          "%s: :%s invalid KEY_LEN=%d, using key length 0\n",
+                          __func__, s->ot_id, val32);
         }
         break;
     case R_KEY_SHARE0_0:
@@ -1303,12 +1309,13 @@ static void ot_kmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     case R_ENTROPY_REFRESH_HASH_CNT:
     case R_ERR_CODE:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: R/O register 0x%02" HWADDR_PRIx " (%s)\n", __func__,
-                      addr, REG_NAME(reg));
+                      "%s: %s: R/O register 0x%02" HWADDR_PRIx " (%s)\n",
+                      __func__, s->ot_id, addr, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 }
@@ -1325,8 +1332,8 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
          */
         if (!s->invalid_state_read) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: STATE read while in invalid FSM state\n",
-                          __func__);
+                          "%s: %s: STATE read while in invalid FSM state\n",
+                          __func__, s->ot_id);
             s->invalid_state_read = true;
         }
         val32 = 0;
@@ -1367,15 +1374,15 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
             break;
         default:
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Bad offset 0x%" HWADDR_PRIx "\n", __func__,
-                          addr);
+                          "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                          s->ot_id, addr);
             val32 = 0;
             break;
         }
     }
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_kmac_state_read_out((uint32_t)addr, val32, pc);
+    trace_ot_kmac_state_read_out(s->ot_id, (uint32_t)addr, val32, pc);
 
     return (uint64_t)val32;
 }
@@ -1383,21 +1390,23 @@ static uint64_t ot_kmac_state_read(void *opaque, hwaddr addr, unsigned size)
 static void ot_kmac_state_write(void *opaque, hwaddr addr, uint64_t value,
                                 unsigned size)
 {
-    (void)opaque;
+    OtKMACState *s = OT_KMAC(opaque);
     (void)addr;
     (void)value;
     (void)size;
     /* on real hardware, writes to STATE are ignored */
-    qemu_log_mask(LOG_GUEST_ERROR, "%s: STATE is read only\n", __func__);
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: STATE is read only\n", __func__,
+                  s->ot_id);
 }
 
 static uint64_t ot_kmac_msgfifo_read(void *opaque, hwaddr addr, unsigned size)
 {
-    (void)opaque;
+    OtKMACState *s = OT_KMAC(opaque);
     (void)addr;
     (void)size;
     /* on real hardware, writes to FIFO will block. Let's just return 0. */
-    qemu_log_mask(LOG_GUEST_ERROR, "%s: MSG_FIFO is write only\n", __func__);
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: MSG_FIFO is write only\n", __func__,
+                  s->ot_id);
     return 0;
 }
 
@@ -1407,7 +1416,8 @@ static void ot_kmac_msgfifo_write(void *opaque, hwaddr addr, uint64_t value,
     OtKMACState *s = OT_KMAC(opaque);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_kmac_msgfifo_write((uint32_t)addr, (uint32_t)value, size, pc);
+    trace_ot_kmac_msgfifo_write(s->ot_id, (uint32_t)addr, (uint32_t)value, size,
+                                pc);
 
     /* trigger error if an app is running of not in MSG_FEED state */
     if (s->current_app || s->state != KMAC_ST_MSG_FEED) {
@@ -1457,9 +1467,10 @@ static void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
              */
             return;
         }
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Ignoring connection to already used app index %u\n",
-                      __func__, app_idx);
+        qemu_log_mask(
+            LOG_GUEST_ERROR,
+            "%s: %s: ignoring connection to already used app index %u\n",
+            __func__, s->ot_id, app_idx);
         return;
     }
 
@@ -1467,8 +1478,8 @@ static void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
     app->cfg = *cfg;
     if (!ot_kmac_check_mode_and_strength(&app->cfg)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: Invalid mode/strength for app index %u\n", __func__,
-                      app_idx);
+                      "%s: %s: Invalid mode/strength for app index %u\n",
+                      __func__, s->ot_id, app_idx);
         /* force dummy values, digest will be wrong */
         app->cfg.mode = OT_KMAC_MODE_CSHAKE;
         app->cfg.strength = 128u;
@@ -1477,9 +1488,9 @@ static void ot_kmac_connect_app(OtKMACState *s, unsigned app_idx,
         if (memcmp(app->cfg.prefix.funcname, "KMAC", 4u) != 0 ||
             app->cfg.prefix.funcname_len != 4u) {
             qemu_log_mask(LOG_GUEST_ERROR,
-                          "%s: Invalid config for app index %u: invalid prefix"
-                          " for KMAC\n",
-                          __func__, app_idx);
+                          "%s: %s: invalid config for app index %u: "
+                          "invalid prefix for KMAC\n",
+                          __func__, s->ot_id, app_idx);
         }
     }
     app->fn = fn;
@@ -1497,7 +1508,7 @@ static void ot_kmac_start_pending_app(OtKMACState *s)
         s->pending_apps &= ~(1u << app_idx);
 
         /* process start */
-        trace_ot_kmac_app_start(app_idx);
+        trace_ot_kmac_app_start(s->ot_id, app_idx);
         s->current_cfg = &s->current_app->cfg;
         ot_kmac_process_start(s);
         ot_kmac_change_fsm_state(s, KMAC_ST_MSG_FEED);
@@ -1516,7 +1527,8 @@ static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
 
     if (app->req_pending) {
         error_setg(&error_fatal,
-                   "Dropping request to already busy app index %u", app_idx);
+                   "%s: %s: dropping request to already busy app index %u",
+                   __func__, s->ot_id, app_idx);
     }
 
     /* save request */
@@ -1535,6 +1547,7 @@ static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
 }
 
 static Property ot_kmac_properties[] = {
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKMACState, ot_id),
     DEFINE_PROP_LINK("edn", OtKMACState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKMACState, edn_ep, UINT8_MAX),
     DEFINE_PROP_UINT8("num-app", OtKMACState, num_app, 0),
@@ -1604,6 +1617,7 @@ static void ot_kmac_realize(DeviceState *dev, Error **errp)
     OtKMACState *s = OT_KMAC(dev);
     (void)errp;
 
+    g_assert(s->ot_id);
     /* make sure num-app property is set */
     g_assert(s->num_app > 0);
 

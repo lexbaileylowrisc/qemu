@@ -273,17 +273,17 @@ ot_ibex_wrapper_update_exec(const char *id, uint32_t bm, bool esc_rx, bool halte
 
 # ot_kmac.c
 
-ot_kmac_app_finished(unsigned app_idx) "#%u"
-ot_kmac_app_start(unsigned app_idx) "#%u"
-ot_kmac_change_state_app(unsigned app_idx, int line, const char *old, int nold, const char *new, int nnew) "#%u @ %d [%s:%d] -> [%s:%d]"
-ot_kmac_change_state_sw(int line, const char *old, int nold, const char *new, int nnew) "@ %d [%s:%d] -> [%s:%d]"
-ot_kmac_debug(const char *msg) "%s"
-ot_kmac_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_kmac_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_kmac_msgfifo_write(uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "addr=0x%03x, val=0x%x (%u), pc=0x%x"
-ot_kmac_process_sw_command(int cmd, const char *cmd_str) "cmd=0x%02x (%s)"
-ot_kmac_report_error(int code, const char *code_str, uint32_t info) "code=0x%02x (%s) info=0x%06x"
-ot_kmac_state_read_out(uint32_t addr, uint32_t val, uint32_t pc) "addr=0x%03x, val=0x%x, pc=0x%x"
+ot_kmac_app_finished(const char *id, unsigned app_idx) "%s: #%u"
+ot_kmac_app_start(const char *id, unsigned app_idx) "%s: #%u"
+ot_kmac_change_state_app(const char *id, unsigned app_idx, int line, const char *old, int nold, const char *new, int nnew) "%s: #%u @ %d [%s:%d] -> [%s:%d]"
+ot_kmac_change_state_sw(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"
+ot_kmac_debug(const char *id, const char *msg) "%s: %s"
+ot_kmac_io_read_out(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (const char *id, %s), val=0x%x, pc=0x%x"
+ot_kmac_io_write(const char *id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (const char *id, %s), val=0x%x, pc=0x%x"
+ot_kmac_msgfifo_write(const char *id, uint32_t addr, uint32_t val, unsigned size, uint32_t pc) "%s: addr=0x%03x, val=0x%x (const char *id, %u), pc=0x%x"
+ot_kmac_process_sw_command(const char *id, int cmd, const char *cmd_str) "%s: cmd=0x%02x (const char *id, %s)"
+ot_kmac_report_error(const char *id, int code, const char *code_str, uint32_t info) "%s: code=0x%02x (const char *id, %s) info=0x%06x"
+ot_kmac_state_read_out(const char *id, uint32_t addr, uint32_t val, uint32_t pc) "%s: addr=0x%03x, val=0x%x, pc=0x%x"
 
 # ot_lc_ctrl.c
 
