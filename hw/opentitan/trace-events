@@ -323,20 +323,20 @@ ot_mbx_sys_io_write(const char * mid, uint32_t addr, const char * regname, uint3
 
 # ot_otbn.c
 
-ot_otbn_change_status(const char * status) "status=%s"
-ot_otbn_deny(uint32_t pc, const char *msg) "pc=0x%x %s"
-ot_otbn_error(const char *msg) "%s"
-ot_otbn_io_read_out(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_otbn_io_write(uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "addr=0x%02x (%s), val=0x%x, pc=0x%x"
-ot_otbn_irq(uint32_t active, uint32_t mask, bool level) "act:0x%08x msk:0x%08x lvl:%u"
-ot_otbn_mem_read(char mem, uint32_t addr, uint32_t value) "%cmem addr=0x%04x, val=0x%08x"
-ot_otbn_mem_write(char mem, uint32_t addr, uint32_t value, const char *outcome) "%cmem addr=0x%04x, val=0x%08x%s"
-ot_otbn_post_execute(uint32_t errbits, uint32_t insncount) "errbits=0x%08x, insncount=%u"
-ot_otbn_proxy_completion_bh(unsigned cmd) "aftercmd=0x%02x"
-ot_otbn_proxy_entropy_request(unsigned rnd) "%u"
-ot_otbn_proxy_entropy_req_bh(void) ""
-ot_otbn_proxy_push_entropy(const char *kind, bool fips) "%s: fips %u"
-ot_otbn_request_entropy(unsigned ep) "ep:%u"
+ot_otbn_change_status(const char * id, const char * status) "%s: status=%s"
+ot_otbn_deny(const char * id, uint32_t pc, const char *msg) "%s: pc=0x%x %s"
+ot_otbn_error(const char * id, const char *msg) "%s: %s"
+ot_otbn_io_read_out(const char * id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (const char * id, %s), val=0x%x, pc=0x%x"
+ot_otbn_io_write(const char * id, uint32_t addr, const char * regname, uint32_t val, uint32_t pc) "%s: addr=0x%02x (const char * id, %s), val=0x%x, pc=0x%x"
+ot_otbn_irq(const char * id, uint32_t active, uint32_t mask, bool level) "%s: act:0x%08x msk:0x%08x lvl:%u"
+ot_otbn_mem_read(const char * id, char mem, uint32_t addr, uint32_t value) "%s: %cmem addr=0x%04x, val=0x%08x"
+ot_otbn_mem_write(const char * id, char mem, uint32_t addr, uint32_t value, const char *outcome) "%s: %cmem addr=0x%04x, val=0x%08x%s"
+ot_otbn_post_execute(const char * id, uint32_t errbits, uint32_t insncount) "%s: errbits=0x%08x, insncount=%u"
+ot_otbn_proxy_completion_bh(const char * id, unsigned cmd) "%s: aftercmd=0x%02x"
+ot_otbn_proxy_entropy_request(const char * id, unsigned rnd) "%s: %u"
+ot_otbn_proxy_entropy_req_bh(const char * id, void) "%s"
+ot_otbn_proxy_push_entropy(const char * id, const char *kind, bool fips) "%s: %s: fips %u"
+ot_otbn_request_entropy(const char * id, unsigned ep) "%s: ep:%u"
 
 # ot_otp.c
 

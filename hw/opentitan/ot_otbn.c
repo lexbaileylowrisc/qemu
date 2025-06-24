@@ -164,8 +164,9 @@ struct OtOTBNState {
 
     enum OtOTBNCommand last_cmd;
 
-    OtOTBNRandom rnds[OT_OTBN_RND_COUNT];
+    char *ot_id;
     char *log_file;
+    OtOTBNRandom rnds[OT_OTBN_RND_COUNT];
     bool log_asm;
 };
 
@@ -189,7 +190,7 @@ static bool ot_otbn_is_locked(OtOTBNState *s)
 static void ot_otbn_update_irq(OtOTBNState *s)
 {
     bool level = s->intr_state & s->intr_enable & INTR_DONE_MASK;
-    trace_ot_otbn_irq(s->intr_state, s->intr_enable, level);
+    trace_ot_otbn_irq(s->ot_id, s->intr_state, s->intr_enable, level);
     ibex_irq_set(&s->irq_done, level);
 }
 
@@ -210,7 +211,7 @@ static void ot_otbn_post_execute(void *opaque)
 
     uint32_t errbits = ot_otbn_proxy_get_err_bits(s->proxy);
     uint32_t insncount = ot_otbn_proxy_get_instruction_count(s->proxy);
-    trace_ot_otbn_post_execute(errbits, insncount);
+    trace_ot_otbn_post_execute(s->ot_id, errbits, insncount);
     s->fatal_alert_cause |= errbits >> 16U;
     s->intr_state |= INTR_DONE_MASK;
     ot_otbn_proxy_acknowledge_execution(s->proxy);
@@ -232,7 +233,7 @@ static void ot_otbn_trigger_entropy_req(void *opaque)
 
     /* sanity check */
     unsigned slot = (unsigned)(uintptr_t)(r - &r->otbn->rnds[0]);
-    trace_ot_otbn_proxy_entropy_request(slot);
+    trace_ot_otbn_proxy_entropy_request(r->otbn->ot_id, slot);
 
     switch (slot) {
     case OT_OTBN_URND:
@@ -253,7 +254,7 @@ static void ot_otbn_proxy_completion_bh(void *opaque)
     enum OtOTBNCommand last_cmd = s->last_cmd;
     s->last_cmd = OT_OTBN_CMD_NONE;
 
-    trace_ot_otbn_proxy_completion_bh(last_cmd);
+    trace_ot_otbn_proxy_completion_bh(s->ot_id, last_cmd);
 
     switch (last_cmd) {
     case OT_OTBN_CMD_EXECUTE:
@@ -283,16 +284,17 @@ static void ot_otbn_proxy_completion_bh(void *opaque)
 static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
 {
     OtOTBNRandom *rnd = opaque;
+    OtOTBNState *s = rnd->otbn;
 
     if (!rnd->entropy_requested) {
         /* entropy not expected, may occur on reset */
-        trace_ot_otbn_error("received unexpected entropy");
+        trace_ot_otbn_error(s->ot_id, "received unexpected entropy");
         return;
     }
 
     if (ot_fifo32_is_full(&rnd->packer)) {
         /* too many entropy bits, internal error */
-        trace_ot_otbn_error("received too many entropy");
+        trace_ot_otbn_error(s->ot_id, "received too many entropy");
         return;
     }
 
@@ -313,18 +315,17 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
     const uint8_t *buf8 = (const uint8_t *)buf;
     g_assert(num == OT_OTBN_RANDOM_WORD_COUNT);
     num *= sizeof(uint32_t);
-    OtOTBNState *s = rnd->otbn;
     g_assert(s != NULL);
     unsigned rnd_ix = (unsigned)(rnd - &s->rnds[0]);
     int res;
     switch (rnd_ix) {
     case OT_OTBN_URND:
-        trace_ot_otbn_proxy_push_entropy("urnd", !rnd->no_fips);
+        trace_ot_otbn_proxy_push_entropy(s->ot_id, "urnd", !rnd->no_fips);
         res = ot_otbn_proxy_push_entropy(s->proxy, rnd_ix, buf8, num,
                                          !rnd->no_fips);
         break;
     case OT_OTBN_RND:
-        trace_ot_otbn_proxy_push_entropy("rnd", !rnd->no_fips);
+        trace_ot_otbn_proxy_push_entropy(s->ot_id, "rnd", !rnd->no_fips);
         res = ot_otbn_proxy_push_entropy(s->proxy, rnd_ix, buf8, num,
                                          !rnd->no_fips);
         break;
@@ -335,7 +336,7 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
     ot_fifo32_reset(&rnd->packer);
     rnd->no_fips = false;
     if (res) {
-        trace_ot_otbn_error("cannot push entropy");
+        trace_ot_otbn_error(s->ot_id, "cannot push entropy");
     }
 }
 
@@ -352,10 +353,12 @@ static void ot_otbn_request_entropy(OtOTBNRandom *rnd)
         return;
     }
 
+    OtOTBNState *s = rnd->otbn;
+
     rnd->entropy_requested = true;
-    trace_ot_otbn_request_entropy(rnd->ep);
+    trace_ot_otbn_request_entropy(s->ot_id, rnd->ep);
     if (ot_edn_request_entropy(rnd->device, rnd->ep)) {
-        trace_ot_otbn_error("failed to request entropy");
+        trace_ot_otbn_error(s->ot_id, "failed to request entropy");
         rnd->entropy_requested = false;
     }
 }
@@ -371,14 +374,15 @@ static void ot_otbn_handle_command(OtOTBNState *s, unsigned command)
     /* "Writes are ignored if OTBN is not idle" */
     if (!ot_otbn_is_idle(s)) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Cannot execute command %02X from a not IDLE state\n",
-                      command);
+                      "%s: %s: cannot execute cmd %02X from a not IDLE state\n",
+                      __func__, s->ot_id, command);
         return;
     }
 
     if (s->last_cmd != OT_OTBN_CMD_NONE) {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "Previous command %02X did not complete\n", s->last_cmd);
+                      "%s: %s: previous command %02X did not complete\n",
+                      __func__, s->ot_id, s->last_cmd);
         return;
     }
 
@@ -399,7 +403,8 @@ static void ot_otbn_handle_command(OtOTBNState *s, unsigned command)
         break;
     default:
         ibex_irq_set(&s->clkmgr, false);
-        qemu_log_mask(LOG_GUEST_ERROR, "Invalid command %02X\n", s->last_cmd);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: Invalid command %02X\n",
+                      __func__, s->ot_id, s->last_cmd);
         break;
     }
 }
@@ -442,17 +447,19 @@ static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
     case R_ALERT_TEST:
     case R_CMD:
         val32 = 0;
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s is write only\n", __func__,
-                      REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s is write only\n", __func__,
+                      s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         val32 = 0;
         break;
     }
 
-    trace_ot_otbn_io_read_out((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otbn_io_read_out(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32,
+                              pc);
 
     return (uint64_t)val32;
 }
@@ -467,10 +474,10 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     hwaddr reg = R32_OFF(addr);
 
     uint32_t pc = ibex_get_current_pc();
-    trace_ot_otbn_io_write((uint32_t)addr, REG_NAME(reg), val32, pc);
+    trace_ot_otbn_io_write(s->ot_id, (uint32_t)addr, REG_NAME(reg), val32, pc);
 
     if (ot_otbn_is_locked(s)) {
-        trace_ot_otbn_deny(pc, "write denied: locked");
+        trace_ot_otbn_deny(s->ot_id, pc, "write denied: locked");
         return;
     }
 
@@ -515,12 +522,13 @@ static void ot_otbn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         break;
     case R_STATUS:
     case R_FATAL_ALERT_CAUSE:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s is read only\n", __func__,
-                      REG_NAME(reg));
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: %s: %s is read only\n", __func__,
+                      s->ot_id, REG_NAME(reg));
         break;
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIx "\n",
-                      __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: %s: bad offset 0x%" HWADDR_PRIx "\n", __func__,
+                      s->ot_id, addr);
         break;
     }
 }
@@ -540,7 +548,7 @@ static void ot_otbn_update_checksum(OtOTBNState *s, bool doi, uint32_t addr,
 static uint32_t ot_otbn_mem_read(OtOTBNState *s, bool doi, hwaddr addr)
 {
     uint32_t value = ot_otbn_proxy_read_memory(s->proxy, doi, addr);
-    trace_ot_otbn_mem_read(doi ? 'I' : 'D', (uint32_t)addr, value);
+    trace_ot_otbn_mem_read(s->ot_id, doi ? 'I' : 'D', (uint32_t)addr, value);
     return value;
 }
 
@@ -548,7 +556,7 @@ static void ot_otbn_mem_write(OtOTBNState *s, bool doi, hwaddr addr,
                               uint32_t value)
 {
     bool written = ot_otbn_proxy_write_memory(s->proxy, doi, addr, value);
-    trace_ot_otbn_mem_write(doi ? 'I' : 'D', (uint32_t)addr, value,
+    trace_ot_otbn_mem_write(s->ot_id, doi ? 'I' : 'D', (uint32_t)addr, value,
                             written ? "" : " FAILED");
     if (written) {
         ot_otbn_update_checksum(s, doi, addr, value);
@@ -590,6 +598,7 @@ static inline void ot_otbn_dmem_write(void *opaque, hwaddr addr, uint64_t val64,
 }
 
 static Property ot_otbn_properties[] = {
+    DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTBNState, ot_id),
     DEFINE_PROP_LINK("edn-u", OtOTBNState, rnds[OT_OTBN_URND].device,
                      TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_LINK("edn-r", OtOTBNState, rnds[OT_OTBN_RND].device,
@@ -680,6 +689,7 @@ static void ot_otbn_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     OtOTBNState *s = OT_OTBN(dev);
+    g_assert(s->ot_id);
 
     g_assert(s->rnds[OT_OTBN_URND].device);
     g_assert(s->rnds[OT_OTBN_RND].device);
