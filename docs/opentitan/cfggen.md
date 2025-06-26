@@ -12,7 +12,8 @@ the QEMU binary.
 
 ````text
 usage: cfggen.py [-h] [-T {darjeeling,earlgrey}] [-o CFG] [-c SV] [-l SV]
-                 [-t HJSON] [-s SOCID] [-C COUNT] [-v] [-d]
+                 [-t HJSON] [-s SOCID] [-C COUNT] [-a {config,clock}] [-v]
+                 [-d]
                  [OTDIR]
 
 OpenTitan QEMU configuration file generator.
@@ -33,6 +34,10 @@ Modifiers:
   -s, --socid SOCID     SoC identifier, if any
   -C, --count COUNT     SoC count (default: 1)
 
+Actions:
+  -a, --action {config,clock}
+                        Action(s) to perform, default: config
+
 Extras:
   -v, --verbose         increase verbosity
   -d, --debug           enable debug mode
@@ -43,6 +48,9 @@ Extras:
 `OTDIR` is a required positional argument which should point to the root directory of the OpenTitan
 repository to analyze. It is used to generate the path towards the required files to parse, each of
 which can be overidden with options `-c`, `-l` and `-t`.
+
+* `-a` specify one or more actions to execute. Default is to generate a configuration file. It is
+  also possible to emit the list of module input clocks in a plain text format.
 
 * `-C` specify how many SoCs are used on the platform
 

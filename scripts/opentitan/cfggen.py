@@ -14,7 +14,7 @@ from configparser import ConfigParser
 from logging import getLogger
 from os.path import abspath, dirname, isdir, isfile, join as joinpath, normpath
 from traceback import format_exc
-from typing import NamedTuple, Optional
+from typing import NamedTuple, Optional, TextIO
 import re
 import sys
 
@@ -101,6 +101,7 @@ class OtConfiguration:
         self._top_clocks: dict[str, OtClock] = {}
         self._sub_clocks: dict[str, OtDerivedClock] = {}
         self._clock_groups: dict[str, OtClockGroup] = {}
+        self._mod_clocks: dict[str, list[str]] = {}
         self._top_name: Optional[str] = None
 
     @property
@@ -177,6 +178,23 @@ class OtConfiguration:
                                                                 clk_src, 1)
             self._clock_groups[name] = OtClockGroup(name, clk_srcs, sw_cg,
                                                     hint)
+        modules = cfg.get('module', [])
+        mod_clocks = {}
+        for module in modules:
+            type_ = module['type']
+            if type_ in ('ast', 'clkmgr'):
+                continue
+            name = module['name']
+            clk_srcs = module.get('clock_srcs', {})
+            clk_grp = module.get('clock_group', '')
+            clocks = []
+            for clk in clk_srcs.values():
+                if isinstance(clk, dict):
+                    clocks.append(f'{clk["group"]}.{clk["clock"]}')
+                else:
+                    clocks.append(f'{clk_grp}.{clk}')
+            mod_clocks[name] = clocks
+        self._mod_clocks = mod_clocks
 
     def load_lifecycle(self, lcpath: str) -> None:
         """Load LifeCycle data from RTL file."""
@@ -230,8 +248,7 @@ class OtConfiguration:
         self._otp.update(otpconst.get_digest_pair('sram_data_key', 'sram'))
 
     def save(self, variant: str, socid: Optional[str], count: Optional[int],
-             outpath: Optional[str]) \
-            -> None:
+             ofp: Optional[TextIO]) -> None:
         """Save QEMU configuration file using a INI-like file format,
            compatible with the `-readconfig` option of QEMU.
         """
@@ -242,11 +259,13 @@ class OtConfiguration:
         self._generate_ast(cfg, variant, socid)
         self._generate_clkmgr(cfg, socid)
         self._generate_pwrmgr(cfg, socid)
-        if outpath:
-            with open(outpath, 'wt') as ofp:
-                cfg.write(ofp)
-        else:
-            cfg.write(sys.stdout)
+        cfg.write(ofp)
+
+    def show_clocks(self, ofp: Optional[TextIO]) -> None:
+        """List clock inputs for each module."""
+        mod_max_len = max(map(len, self._mod_clocks.keys()))
+        for modname, modclocks in sorted(self._mod_clocks.items()):
+            print(f'{modname:{mod_max_len}s}', ', '.join(modclocks), file=ofp)
 
     @classmethod
     def add_pair(cls, data: dict[str, str], kname: str, value: str) -> None:
@@ -410,6 +429,7 @@ def main():
         'darjeeling': 'dj',
         'earlgrey': 'eg',
     }
+    actions = ['config', 'clock']
     try:
         desc = sys.modules[__name__].__doc__.split('.', 1)[0].strip()
         argparser = ArgumentParser(description=f'{desc}.')
@@ -432,6 +452,10 @@ def main():
                           help='SoC identifier, if any')
         mods.add_argument('-C', '--count', default=1, type=int,
                           help='SoC count (default: 1)')
+        mods = argparser.add_argument_group(title='Actions')
+        mods.add_argument('-a', '--action', choices=actions,
+                          action='append', default=[],
+                          help=f'Action(s) to perform, default: {actions[0]}')
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
@@ -449,6 +473,8 @@ def main():
 
         topcfg = args.topcfg
         ot_dir = args.opentitan
+        if not args.action:
+            args.action.append(actions[0])
         if not topcfg:
             if not args.opentitan:
                 argparser.error('OTDIR is required is no top file is specified')
@@ -511,7 +537,11 @@ def main():
 
         cfg.load_lifecycle(lcpath)
         cfg.load_otp_constants(ocpath)
-        cfg.save(topvar, args.socid, args.count, args.out)
+        with open(args.out, 'wt') if args.out else sys.stdout as ofp:
+            if 'config' in args.action:
+                cfg.save(topvar, args.socid, args.count, ofp)
+            if 'clock' in args.action:
+                cfg.show_clocks(ofp)
 
     except (IOError, ValueError, ImportError) as exc:
         print(f'\nError: {exc}', file=sys.stderr)
