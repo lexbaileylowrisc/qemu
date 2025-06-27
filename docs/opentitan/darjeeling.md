@@ -44,6 +44,11 @@ Please check out `hw/opentitan/ot_ref.log`
 
 Devices in this group implement subset(s) of the real HW.
 
+* Clock Manager
+  * Runtime-configurable device, through properties
+  * Manage clock dividers, groups, hints, software configurable clocks
+  * Propagate clock signals from source (AST, ...) to devices
+  * Hint management and measurement are not implemented
 * DMA
   * Only memory-to-memory transfers (inc. hashing) are supported, Handshake modes are not supported
 * Flash controller
@@ -54,6 +59,9 @@ Devices in this group implement subset(s) of the real HW.
    * A CharDev backend can be used to get GPIO outputs and update GPIO inputs,
 * KMAC
   * Side loading is not supported
+* Ibex wrapper
+  * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
+    from Power Manager
 * Lifecycle controller
   * [LC controller](lc_ctrl_dmi.md) can be accessed through JTAG using a DM-TL bridge
   * Escalation is not supported
@@ -73,11 +81,7 @@ features are implemented.
 
 * AST
   * entropy source only (from host source)
-* Clock Manager
-  * Clock hints only
-* Ibex wrapper
-  * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
-    from Power Manager
+  * configurable clock sources
 * Reset Manager
   * HW and SW reset requests are supported
 * Pinmux

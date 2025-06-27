@@ -15,6 +15,8 @@ EarlGrey 2.5.2-RC0
 
 * AES
   * missing side-loading
+* Alert controller
+  * ping mechanism is not supported
 * AON Timer
 * CSRNG
 * EDN
@@ -32,6 +34,11 @@ EarlGrey 2.5.2-RC0
 
 Devices in this group implement subset(s) of the real HW.
 
+* Clock Manager
+  * Runtime-configurable device, through properties
+  * Manage clock dividers, groups, hints, software configurable clocks
+  * Propagate clock signals from source (AST, ...) to devices
+  * Hint management and measurement are not implemented
 * Flash controller
   * read-only features only
 * OTP controller
@@ -41,6 +48,9 @@ Devices in this group implement subset(s) of the real HW.
    * AES CTR not supported (uses xoroshiro128++ reseeded from entropy src)
 * [GPIO](gpio.md)
    * A CharDev backend can be used to get GPIO outputs and update GPIO inputs,
+* Ibex wrapper
+  * random source (connected to CSR), FPGA version, virtual remapper, fetch enable can be controlled
+    from Power Manager
 * KMAC
   * Side loading is not supported
 * [ROM controller](rom_ctrl.md)
@@ -54,13 +64,11 @@ In this group, device CSRs are supported (w/ partial or full access control & ma
 features are implemented.
 
 * AST
-  * entropy source only (from host source)
-* Clock Manager
-  * Clock hints only
-* Ibex wrapper
-  * random source (connected to CSR), FPGA version, virtual remapper
+  * configurable clock sources
+* GPIO
+  * Connections with pinmux not implemented (need to be ported from [Darjeeling](darjeeling.md) version)
 * Lifecycle controller
-  * only forwards LC state from OTP
+  * only forwards LC state from OTP (need to be ported from [Darjeeling](darjeeling.md) version)
 * Power Manager
   * Fast FSM is partially supported, Slow FSM is bypassed
   * Interactions with other devices (such as the Reset Manager) are limited
@@ -70,12 +78,8 @@ features are implemented.
 Devices in this group are mostly implemented with a RAM backend or real CSRs but do not implement
 any useful feature (only allow guest test code to execute as expected).
 
-* Alert controller
 * Key manager
-* KMAC (in development)
-* GPIO
 * Pinmux
-* Power Manager
 * Sensor
 
 ## Running the virtual machine
