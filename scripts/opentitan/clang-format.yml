@@ -9,6 +9,7 @@ AlignConsecutiveAssignments:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    true
 AlignConsecutiveBitFields:
@@ -16,6 +17,7 @@ AlignConsecutiveBitFields:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    true
 AlignConsecutiveDeclarations:
@@ -23,6 +25,7 @@ AlignConsecutiveDeclarations:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    true
 AlignConsecutiveMacros:
@@ -30,6 +33,7 @@ AlignConsecutiveMacros:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    false
 AlignConsecutiveShortCaseStatements:
@@ -43,6 +47,7 @@ AlignConsecutiveTableGenBreakingDAGArgColons:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    false
 AlignConsecutiveTableGenCondOperatorColons:
@@ -50,6 +55,7 @@ AlignConsecutiveTableGenCondOperatorColons:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    false
 AlignConsecutiveTableGenDefinitionColons:
@@ -57,6 +63,7 @@ AlignConsecutiveTableGenDefinitionColons:
   AcrossEmptyLines: false
   AcrossComments:  false
   AlignCompound:   false
+  AlignFunctionDeclarations: false
   AlignFunctionPointers: false
   PadOperators:    false
 AlignEscapedNewlines: DontAlign
@@ -76,11 +83,12 @@ AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: All
 AllowShortLoopsOnASingleLine: false
+AllowShortNamespacesOnASingleLine: false
 AlwaysBreakAfterDefinitionReturnType: None
 AlwaysBreakBeforeMultilineStrings: false
 AttributeMacros:
 BinPackArguments: true
-BinPackParameters: true
+BinPackParameters: BinPack
 BitFieldColonSpacing: Both
 BraceWrapping:
   AfterCaseLabel:  false
@@ -111,6 +119,7 @@ BreakBeforeConceptDeclarations: Always
 BreakBeforeInheritanceComma: false
 BreakBeforeInlineASMColon: OnlyMultiline
 BreakBeforeTernaryOperators: false
+BreakBinaryOperations: Never
 BreakConstructorInitializers: BeforeColon
 BreakConstructorInitializersBeforeComma: false
 BreakFunctionDefinitionParameters: false
@@ -184,6 +193,7 @@ IncludeIsMainSourceRegex: ''
 IndentAccessModifiers: false
 IndentCaseBlocks: false
 IndentCaseLabels: false
+IndentExportBlock: true
 IndentExternBlock: AfterExternBlock
 IndentGotoLabels: true
 IndentPPDirectives: None
@@ -206,6 +216,7 @@ KeepEmptyLines:
   AtEndOfFile:     true
   AtStartOfBlock:  false
   AtStartOfFile:   false
+KeepFormFeed:    false
 LambdaBodyIndentation: Signature
 LineEnding:      LF
 MacroBlockBegin: ''
@@ -221,6 +232,7 @@ ObjCSpaceBeforeProtocolList: true
 PackConstructorInitializers: BinPack
 PenaltyBreakAssignment: 0
 PenaltyBreakBeforeFirstCallParameter: 500
+PenaltyBreakBeforeMemberAccess: 150
 PenaltyBreakComment: 300
 PenaltyBreakFirstLessLess: 120
 PenaltyBreakOpenParenthesis: 0
@@ -234,8 +246,9 @@ PointerAlignment: Right
 PPIndentWidth:   -1
 QualifierAlignment: Leave
 ReferenceAlignment: Pointer
-ReflowComments:  true
+ReflowComments:  Always
 RemoveBracesLLVM: false
+RemoveEmptyLinesInUnwrappedLines: false
 RemoveParentheses: Leave
 RemoveSemicolon: false
 RequiresClausePosition: OwnLine
@@ -292,5 +305,5 @@ TabWidth:        4
 UseTab:          Never
 VerilogBreakBetweenInstancePorts: true
 WhitespaceSensitiveMacros:
+WrapNamespaceBodyWithEmptyLines: Leave
 ...
-
