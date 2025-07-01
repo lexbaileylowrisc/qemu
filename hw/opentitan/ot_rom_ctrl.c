@@ -564,6 +564,7 @@ static bool ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
         return false;
     }
 
+    /* NOLINTNEXTLINE(misc-redundant-expression) */
     int fd = open(ri->filename, O_RDONLY | O_BINARY | O_CLOEXEC);
     if (fd == -1) {
         error_setg(&error_fatal, "%s: %s: could not open ROM '%s': %s",
@@ -601,6 +602,7 @@ static char *ot_rom_ctrl_read_text_file(OtRomCtrlState *s, const OtRomImg *ri)
         return NULL;
     }
 
+    /* NOLINTNEXTLINE(misc-redundant-expression) */
     int fd = open(ri->filename, O_RDONLY | O_BINARY | O_CLOEXEC);
     if (fd == -1) {
         error_setg(&error_fatal, "%s: %s: could not open ROM '%s': %s\n",

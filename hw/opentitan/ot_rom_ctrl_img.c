@@ -40,6 +40,7 @@ static const uint8_t ELF_HEADER[] = {
 
 static OtRomImgFormat ot_rom_img_guess_image_format(const char *filename)
 {
+    /* NOLINTNEXTLINE(misc-redundant-expression) */
     int fd = open(filename, O_RDONLY | O_BINARY | O_CLOEXEC);
     if (fd == -1) {
         return OT_ROM_IMG_FORMAT_NONE;
