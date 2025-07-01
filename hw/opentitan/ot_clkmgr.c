@@ -1018,7 +1018,7 @@ static uint64_t ot_clkmgr_read(void *opaque, hwaddr addr, unsigned size)
         char reg_name[40u];
         unsigned ix = 0;
         for (; clk->name[ix] && ix < 16u; ix++) {
-            reg_name[ix] = toupper(clk->name[ix]);
+            reg_name[ix] = (char)toupper(clk->name[ix]);
         }
         strbcpy(reg_name, &reg_name[ix], "_MEAS_CTRL_");
         strbcpy(reg_name, &reg_name[ix] + ARRAY_SIZE("_MEAS_CTRL_") - 1u,
@@ -1154,7 +1154,7 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
         char reg_name[40u];
         unsigned ix = 0;
         for (; clk->name[ix] && ix < 20u; ix++) {
-            reg_name[ix] = toupper(clk->name[ix]);
+            reg_name[ix] = (char)toupper(clk->name[ix]);
         }
         strbcpy(reg_name, &reg_name[ix], "_MEAS_CTRL_");
         strbcpy(reg_name, &reg_name[ix] + ARRAY_SIZE("_MEAS_CTRL_") - 1u,
