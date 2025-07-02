@@ -555,10 +555,7 @@ REG32(LC_STATE, 16344u)
 #define OT_OTP_HW_CLOCK QEMU_CLOCK_VIRTUAL_RT
 
 /* the following delays are arbitrary for now */
-#define DAI_READ_DELAY_NS   100000u /* 100us */
-#define DAI_WRITE_DELAY_NS  1000000u /* 1ms */
-#define DAI_DIGEST_DELAY_NS 5000000u /* 5ms */
-#define LCI_PROG_DELAY_NS   500000u /* 500us*/
+#define DAI_DIGEST_DELAY_NS 50000u /* 50us */
 #define LCI_PROG_SCHED_NS   1000u /* 1us*/
 
 #define SRAM_KEY_SEED_WIDTH (SRAM_DATA_KEY_SEED_SIZE * 8u)
@@ -812,6 +809,7 @@ struct OtOTPDjState {
     OtOTPPartController *partctrls;
     OtOTPKeyGen *keygen;
     OtOTPScrmblKeyInit *scrmbl_key_init;
+    OtOtpBeCharacteristics be_chars;
     uint64_t digest_iv;
     uint8_t digest_const[16u];
     uint64_t sram_iv;
@@ -823,7 +821,7 @@ struct OtOTPDjState {
 
     char *ot_id;
     BlockBackend *blk; /* OTP host backend */
-    OtOtpBeIf *otp_backend; /* may be NULL */
+    OtOtpBeIf *otp_backend;
     OtEDNState *edn;
     char *scrmbl_key_xstr;
     char *digest_const_xstr;
@@ -1174,10 +1172,6 @@ static bool ot_otp_dj_is_buffered(int partition)
 
 static bool ot_otp_dj_is_backend_ecc_enabled(const OtOTPDjState *s)
 {
-    if (!s->otp_backend) {
-        return true;
-    }
-
     OtOtpBeIfClass *bec = OT_OTP_BE_IF_GET_CLASS(s->otp_backend);
     if (!bec->is_ecc_enabled) {
         return true;
@@ -1957,6 +1951,7 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
 
     uint32_t data_lo, data_hi;
     unsigned err = 0;
+    unsigned cell_count = sizeof(uint32_t) + (do_ecc ? sizeof(uint16_t) : 0);
 
     if (is_wide || is_digest) {
         waddr &= ~0b1u;
@@ -1972,6 +1967,8 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
                 data_hi = ot_otp_dj_verify_ecc(s, data_hi, ecc >> 16u, &err);
             }
         }
+
+        cell_count *= 2u;
     } else {
         data_lo = s->otp->data[waddr];
         data_hi = 0u;
@@ -1986,6 +1983,9 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
             if (ot_otp_dj_is_ecc_enabled(s)) {
                 data_lo = ot_otp_dj_verify_ecc(s, data_lo, ecc & 0xffffu, &err);
             }
+            cell_count = 4u + 2u;
+        } else {
+            cell_count = 4u;
         }
     }
 
@@ -2003,8 +2003,9 @@ static void ot_otp_dj_dai_read(OtOTPDjState *s)
 
     if (!ot_otp_dj_is_buffered(partition)) {
         /* fake slow access to OTP cell */
+        unsigned access_time = s->be_chars.timings.read_ns * cell_count;
         timer_mod(s->dai->delay,
-                  qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_READ_DELAY_NS);
+                  qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + access_time);
     } else {
         DAI_CHANGE_STATE(s, OTP_DAI_IDLE);
     }
@@ -2208,21 +2209,29 @@ static void ot_otp_dj_dai_write(OtOTPDjState *s)
 
     s->dai->partition = partition;
 
+    bool do_ecc = ot_otp_dj_is_ecc_enabled(s);
+    unsigned cell_count = sizeof(uint32_t);
+
     if (is_wide || is_digest) {
         if (ot_otp_dj_dai_write_u64(s, address)) {
             return;
         }
+        cell_count *= 2u;
     } else {
         if (ot_otp_dj_dai_write_u32(s, address)) {
             return;
         }
     }
 
+    if (do_ecc) {
+        cell_count += cell_count / 2u;
+    };
+
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
-    /* fake slow access to OTP cell */
-    timer_mod(s->dai->delay,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
+    /* fake slow update of OTP cell */
+    unsigned update_time = s->be_chars.timings.write_ns * cell_count;
+    timer_mod(s->dai->delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + update_time);
 }
 
 static void ot_otp_dj_dai_digest(OtOTPDjState *s)
@@ -2321,7 +2330,7 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_WAIT);
 
-    /* fake slow access to OTP cell */
+    /* fake slow update of OTP cell */
     timer_mod(s->dai->delay,
               qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_DIGEST_DELAY_NS);
 }
@@ -2384,9 +2393,10 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
 
     DAI_CHANGE_STATE(s, OTP_DAI_WRITE_WAIT);
 
-    /* fake slow access to OTP cell */
-    timer_mod(s->dai->delay,
-              qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + DAI_WRITE_DELAY_NS);
+    /* fake slow update of OTP cell */
+    unsigned cell_count = sizeof(uint64_t) + sizeof(uint32_t);
+    unsigned update_time = s->be_chars.timings.write_ns * cell_count;
+    timer_mod(s->dai->delay, qemu_clock_get_ns(OT_VIRTUAL_CLOCK) + update_time);
 }
 
 static void ot_otp_dj_dai_complete(void *opaque)
@@ -3530,8 +3540,9 @@ static void ot_otp_dj_lci_write_word(void *opaque)
 
     lci->hpos += 1;
 
+    unsigned update_time = s->be_chars.timings.write_ns * sizeof(uint16_t);
     timer_mod(lci->prog_delay,
-              qemu_clock_get_ns(OT_OTP_HW_CLOCK) + LCI_PROG_DELAY_NS);
+              qemu_clock_get_ns(OT_OTP_HW_CLOCK) + update_time);
 
     LCI_CHANGE_STATE(s, OTP_LCI_WRITE_WAIT);
 }
@@ -4065,6 +4076,10 @@ static void ot_otp_dj_reset_exit(Object *obj, ResetType type)
         c->parent_phases.exit(obj, type);
     }
 
+    OtOtpBeIfClass *bec = OT_OTP_BE_IF_GET_CLASS(s->otp_backend);
+    memcpy(&s->be_chars, bec->get_characteristics(s->otp_backend),
+           sizeof(OtOtpBeCharacteristics));
+
     ot_edn_connect_endpoint(s->edn, s->edn_ep, &ot_otp_dj_keygen_push_entropy,
                             s);
 
@@ -4077,6 +4092,7 @@ static void ot_otp_dj_realize(DeviceState *dev, Error **errp)
     (void)errp;
 
     g_assert(s->ot_id);
+    g_assert(s->otp_backend);
 
     ot_otp_dj_configure_scrmbl_key(s);
     ot_otp_dj_configure_digest(s);
