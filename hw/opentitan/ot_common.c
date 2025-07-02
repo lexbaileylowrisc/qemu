@@ -224,7 +224,7 @@ AddressSpace *ot_common_get_local_address_space(DeviceState *s)
 
 void ot_common_configure_device_opts(DeviceState **devices, unsigned count)
 {
-    // TODO need to use qemu_find_opts_err if no config is ok
+    /* TODO need to use qemu_find_opts_err if no config is ok */
     QemuOptsList *optlist = qemu_find_opts("ot_device");
     if (!optlist) {
         qemu_log("%s: no config\n", __func__);

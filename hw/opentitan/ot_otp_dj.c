@@ -685,7 +685,7 @@ typedef enum {
     OTP_LCI_ERROR,
 } OtOTPLCIState;
 
-// TODO: wr and rd lock need to be rewritten (not simple boolean)
+/* TODO: wr and rd lock need to be rewritten (not simple boolean) */
 
 typedef struct {
     uint16_t size;
@@ -1450,8 +1450,10 @@ static uint64_t ot_otd_dj_verify_digest(OtOTPDjState *s, unsigned partition,
     if (err) {
         OtOTPError otp_err =
             (err > 1) ? OTP_MACRO_ECC_UNCORR_ERROR : OTP_MACRO_ECC_CORR_ERROR;
-        // Note: need to check if any caller could override the error/state
-        // in this case
+        /*
+         * Note: need to check if any caller could override the error/state
+         * in this case
+         */
         ot_otp_dj_set_error(s, partition, otp_err);
     }
 
@@ -1478,8 +1480,10 @@ static int ot_otp_dj_apply_ecc(OtOTPDjState *s, unsigned partition)
         if (err) {
             OtOTPError otp_err = (err > 1) ? OTP_MACRO_ECC_UNCORR_ERROR :
                                              OTP_MACRO_ECC_CORR_ERROR;
-            // Note: need to check if any caller could override the error/state
-            // in this case
+            /*
+             *  Note: need to check if any caller could override the error/state
+             * in this case
+             */
             ot_otp_dj_set_error(s, partition, otp_err);
             if (err > 1) {
                 trace_ot_otp_ecc_init_error(s->ot_id, PART_NAME(partition),
@@ -1689,7 +1693,7 @@ static void ot_otp_dj_lc_broadcast_bh(void *opaque)
             if (level) {
                 DAI_CHANGE_STATE(s, OTP_DAI_ERROR);
                 LCI_CHANGE_STATE(s, OTP_LCI_ERROR);
-                // TODO: manage other FSMs
+                /* TODO: manage other FSMs */
                 qemu_log_mask(LOG_UNIMP,
                               "%s: %s: ESCALATE partially implemented\n",
                               __func__, s->ot_id);
@@ -1859,11 +1863,11 @@ static inline int ot_otp_dj_write_backend(OtOTPDjState *s, const void *buffer,
      */
     g_assert(offset + size <= s->otp->size);
 
-    // NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange)
+    /* NOLINTBEGIN(clang-analyzer-optin.core.EnumCastOutOfRange) */
     return blk_pwrite(s->blk, (int64_t)(intptr_t)offset, (int64_t)size, buffer,
                       /* a bitfield of enum is not an enum item */
                       (BdrvRequestFlags)0);
-    // NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange)
+    /* NOLINTEND(clang-analyzer-optin.core.EnumCastOutOfRange) */
 }
 
 static void ot_otp_dj_dai_init(OtOTPDjState *s)
@@ -2368,7 +2372,7 @@ static void ot_otp_dj_dai_write_digest(void *opaque)
 
     uint32_t ecc = ot_otp_dj_compute_ecc_u64(data);
 
-    // dwaddr is 64-bit based, convert it to 32-bit base for ECC
+    /* dwaddr is 64-bit based, convert it to 32-bit base for ECC */
     unsigned ewaddr = (dwaddr << 1u) / s->otp->ecc_granule;
     g_assert(ewaddr < s->otp->ecc_size);
     uint32_t *edst = &s->otp->ecc[ewaddr];

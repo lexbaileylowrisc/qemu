@@ -1350,8 +1350,9 @@ static void ot_lc_ctrl_start_transition(OtLcCtrlState *s)
                 if (s->lc_tcount == 0) {
                     s->lc_tcount = 1u;
                 }
-                // TODO DFT start override (see RTL)
-                // TODO change FSM behavior once this is selected
+                /* TODO DFT start override (see RTL) */
+
+                /* TODO change FSM behavior once this is selected */
                 s->volatile_unlocked = true;
                 s->regs[R_STATUS] |= R_STATUS_TRANSITION_SUCCESSFUL_MASK;
                 trace_ot_lc_ctrl_info(s->ot_id, "Successful volatile unlock");
@@ -1683,8 +1684,9 @@ static uint32_t ot_lc_ctrl_regs_read(OtLcCtrlState *s, hwaddr addr,
 
     switch (reg) {
     case R_LC_TRANSITION_CNT:
-        // TODO: >= 24 -> state == SCRAP
-        // Error: should be 31
+        /* TODO: >= 24 -> state == SCRAP */
+
+        /* Error: should be 31 */
         val32 = s->lc_tcount;
         break;
     case R_LC_STATE:

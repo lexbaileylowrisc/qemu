@@ -477,14 +477,15 @@ static void ot_socdbg_ctrl_lc_broadcast(void *opaque, int n, int level)
     case OT_LC_ISO_PART_SW_RD_EN:
     case OT_LC_ISO_PART_SW_WR_EN:
     case OT_LC_OWNER_SEED_SW_RW_EN:
-        // do not seem to be routed...
+        /* do not seem to be routed... */
         break;
     case OT_LC_CREATOR_SEED_SW_RW_EN:
     case OT_LC_SEED_HW_RD_EN:
     case OT_LC_ESCALATE_EN:
     case OT_LC_CHECK_BYP_EN:
         /* verbatim from RTL: "Use unused singals to make lint clean" */
-        // why do we explictly route signals that are then discarded?
+
+        /* why do we explictly route signals that are then discarded? */
         break;
     /* NOLINTEND(bugprone-branch-clone) */
     default:

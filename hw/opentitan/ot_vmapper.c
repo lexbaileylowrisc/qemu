@@ -754,7 +754,7 @@ static GList *ot_vmapper_fuse(OtVMapperState *s, GList *rglist)
             VMAP_RANGE(current)->end = VMAP_RANGE(next)->end;
 
             rglist = g_list_remove_link(rglist, next);
-            g_free(next->data); // OtRegionRange
+            g_free(next->data); /* OtRegionRange */
             g_list_free(next);
 
             /*

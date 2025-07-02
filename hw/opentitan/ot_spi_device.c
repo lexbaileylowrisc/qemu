@@ -1826,7 +1826,7 @@ static MemTxResult ot_spi_device_buf_read_with_attrs(
         val32 = 0;
     }
 
-    // TODO: check which buffers can only be accessed as 32-bit locations
+    /* TODO: check which buffers can only be accessed as 32-bit locations */
 
     unsigned addr_offset = (addr & 3u);
     g_assert((addr_offset + size) <= 4u);
@@ -2073,7 +2073,7 @@ static int ot_spi_device_chr_be_change(void *opaque)
 
     if (s->watch_tag > 0) {
         g_source_remove(s->watch_tag);
-        // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+        /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
         s->watch_tag = qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
                                              &ot_spi_device_chr_watch_cb, s);
     }

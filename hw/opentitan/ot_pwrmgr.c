@@ -625,8 +625,10 @@ static void ot_pwrmgr_fast_fsm_tick(OtPwrMgrState *s)
         s->boot_status.io_ip_clk_en = 1u;
         ibex_irq_set(&s->boot_st, s->boot_status.i32);
         PWR_CHANGE_FAST_STATE(s, RELEASE_LC_RST);
-        // TODO: need to release ROM controllers from reset here to emulate
-        // they are clocked and start to verify their contents.
+        /*
+         * TODO: need to release ROM controllers from reset here to emulate
+         * they are clocked and start to verify their contents.
+         */
         break;
     case OT_PWR_FAST_ST_RELEASE_LC_RST:
         PWR_CHANGE_FAST_STATE(s, OTP_INIT);
