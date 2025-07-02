@@ -129,6 +129,13 @@ struct OtOtpOtBeClass {
     ResettablePhases parent_phases;
 };
 
+static const OtOtpBeCharacteristics OTP_BE_CHARACTERISTICS = {
+    .timings = {
+        .read_ns = 5000u /* 5 us */,
+        .write_ns = 50000u /* 50 us */,
+    },
+};
+
 static uint64_t ot_otp_ot_be_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtOtpOtBeState *s = opaque;
@@ -203,6 +210,14 @@ static bool ot_otp_ot_be_is_ecc_enabled(OtOtpBeIf *beif)
     return true;
 }
 
+static const OtOtpBeCharacteristics*
+ot_otp_ot_be_get_characteristics(OtOtpBeIf *beif)
+{
+    (void)beif;
+
+    return &OTP_BE_CHARACTERISTICS;
+}
+
 static Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
@@ -254,6 +269,7 @@ static void ot_otp_ot_be_class_init(ObjectClass *klass, void *data)
 
     OtOtpBeIfClass *bec = OT_OTP_BE_IF_CLASS(klass);
     bec->is_ecc_enabled = &ot_otp_ot_be_is_ecc_enabled;
+    bec->get_characteristics = &ot_otp_ot_be_get_characteristics;
 }
 
 static const TypeInfo ot_otp_ot_be_init_info = {
