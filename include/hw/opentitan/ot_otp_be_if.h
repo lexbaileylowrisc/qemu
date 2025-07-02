@@ -1,7 +1,7 @@
 /*
  * QEMU OpenTitan OTP backend interface
  *
- * Copyright (c) 2024 Rivos, Inc.
+ * Copyright (c) 2024-2025 Rivos, Inc.
  *
  * Author(s):
  *  Emmanuel Blot <eblot@rivosinc.com>
@@ -39,6 +39,13 @@ DECLARE_CLASS_CHECKERS(OtOtpBeIfClass, OT_OTP_BE_IF, TYPE_OT_OTP_BE_IF)
 
 typedef struct OtOtpBeIf OtOtpBeIf;
 
+typedef struct {
+    struct {
+        unsigned read_ns; /* time to read an OTP cell */
+        unsigned write_ns; /* time to write an OTP cell */
+    } timings;
+} OtOtpBeCharacteristics;
+
 struct OtOtpBeIfClass {
     InterfaceClass parent_class;
 
@@ -49,6 +56,13 @@ struct OtOtpBeIfClass {
      * @return @c true if ECC mode is active, @c false otherwise
      */
     bool (*is_ecc_enabled)(OtOtpBeIf *beif);
+
+    /*
+     * Retrieve OTP back end characteristics
+     *
+     * @return the OTP characteristics
+     */
+    const OtOtpBeCharacteristics *(*get_characteristics)(OtOtpBeIf *beif);
 };
 
 #endif /* HW_OPENTITAN_OT_OTP_BE_IF_H */
