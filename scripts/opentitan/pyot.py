@@ -196,7 +196,7 @@ def main():
             result_file = args.result
 
         log = configure_loggers(args.verbose, 'pyot',
-                                -1, 'flashgen', 'elf', 'otp', 1,
+                                -1, 'flashgen', 'elf', 'otp', 'pyot.file', 1,
                                 args.vcp_verbose or 0,
                                 'pyot.vcp', name_width=30,
                                 ms=args.log_time, quiet=args.quiet,

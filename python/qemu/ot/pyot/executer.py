@@ -280,6 +280,7 @@ class QEMUExecuter:
             -> tuple[str, Optional[str], list[str], Optional[str]]:
         rom_exec = bool(args.rom_exec)
         roms = args.rom or []
+        # rom can be specified as a string or a list of strings
         if isinstance(roms, str):
             roms = [roms]
         multi_rom = (len(roms) + int(rom_exec)) > 1
@@ -300,6 +301,10 @@ class QEMUExecuter:
         for chip_id in range(chiplet_count):
             rom_count = 0
             for rom in roms:
+                if rom in ('-', '_'):
+                    # special marker to disable a specific ROM
+                    rom_count += 1
+                    continue
                 rom_path = self._qfm.interpolate(rom)
                 if not isfile(rom_path):
                     raise ValueError(f'Unable to find ROM file {rom_path}')
@@ -354,7 +359,11 @@ class QEMUExecuter:
                     rom_count += 1
                 else:
                     if args.embedded_flash is None:
-                        fw_args.extend(('-kernel', exec_path))
+                        if not roms:
+                            fw_args.extend(('-kernel', exec_path))
+                        else:
+                            fw_args.extend(('-device',
+                                            f'loader,file={exec_path}'))
         else:
             exec_path = None
         return machine, xtype, fw_args, exec_path
@@ -641,7 +650,8 @@ class QEMUExecuter:
             self._log.debug('No configuration for test %s', test_name)
             opts = None
         else:
-            test_cfg = {k: v for k, v in test_cfg.items()
+            # use same arg parser dash-underscore replacement for option name
+            test_cfg = {k.replace('-', '_'): v for k, v in test_cfg.items()
                         if k not in ('pre', 'post', 'with')}
             self._log.debug('Using custom test config for %s', test_name)
             discards = {k for k, v in test_cfg.items() if v == ''}
