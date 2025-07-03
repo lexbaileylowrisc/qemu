@@ -7,6 +7,12 @@
 """Bit sequence helpers for JTAG.
 
    BitSequence handle bit manipulation for the JTAG tools.
+
+   To run all tests, use:
+       python3 jtagtools/bits/__init__.py [-v]
+
+   To test a single function, install pytest and use:
+       pytest --doctest-modules jtagtools/bits -k <function>
 """
 
 from typing import Any, Iterable, Union
@@ -22,7 +28,7 @@ class BitSequenceError(Exception):
     """
 
 
-BitSequenceInitializer = Union['BitSequence', str, int, memoryview,
+BitSequenceInitializer = Union['BitSequence', str, int, bytes, bytearray,
                                Iterable[int], Iterable[bool], None]
 """Supported types to initialize a BitSequence."""
 
@@ -155,7 +161,7 @@ class BitSequence:
         return bseq
 
     @classmethod
-    def from_bytes(cls, value: memoryview) -> 'BitSequence':
+    def from_bytes(cls, value: Union[bytes, bytearray]) -> 'BitSequence':
         """Instanciate a BitSequence from a sequence of bytes, one bit for each
            input byte.
 
@@ -165,8 +171,8 @@ class BitSequence:
         return cls.from_iterable(value)
 
     @classmethod
-    def from_bytestream(cls, value: memoryview, lsbyte: bool = False) \
-            -> 'BitSequence':
+    def from_bytestream(cls, value: Union[bytes, bytearray],
+                        lsbyte: bool = False) -> 'BitSequence':
         """Instanciate a BitSequence from a sequence of bytes, 8 bits for each
            input byte.
 
@@ -342,12 +348,23 @@ class BitSequence:
         b'0ba523'
         >>> hexlify(BitSequence(0xC4A5D01234, 40).to_bytestream(False, False))
         b'c4a5d01234'
+        >>> hexlify(BitSequence(0x51234, 20).to_bytestream(False, False))
+        b'051234'
+        >>> hexlify(BitSequence(0x51234, 21).to_bytestream(False, False))
+        b'051234'
+        >>> hexlify(BitSequence(0x51234, 21).to_bytestream(True, False))
+        b'341205'
+        >>> hexlify(BitSequence(0x51234, 21).to_bytestream(True, True))
+        b'2c48a0'
         """
         out: list[int] = []
         bseq = BitSequence(self)
+        xbitlen = len(bseq) & 7
+        if xbitlen:
+            bseq.push_left([0] * (8 - xbitlen))
         if lsbit:
             bseq.reverse()
-        while bseq._width:
+        while bseq._width > 0:
             out.append(bseq._int & 0xff)
             bseq._int >>= 8
             bseq._width -= 8
