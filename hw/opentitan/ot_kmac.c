@@ -544,7 +544,7 @@ static void ot_kmac_get_sw_config(OtKMACState *s)
     }
 }
 
-static inline size_t ot_kmac_get_key_length(OtKMACState *s)
+static inline size_t ot_kmac_get_key_length(const OtKMACState *s)
 {
     uint32_t key_len = FIELD_EX32(s->regs[R_KEY_LEN], KEY_LEN, LEN);
     switch (key_len) {
@@ -731,13 +731,13 @@ static void ot_kmac_process(void *opaque)
     ot_kmac_update_irq(s);
 }
 
-static inline bool ot_kmac_config_enabled(OtKMACState *s)
+static inline bool ot_kmac_config_enabled(const OtKMACState *s)
 {
     /* configuration is enabled only in idle mode */
     return s->state == KMAC_ST_IDLE;
 }
 
-static inline bool ot_kmac_check_reg_write(OtKMACState *s, hwaddr reg)
+static inline bool ot_kmac_check_reg_write(const OtKMACState *s, hwaddr reg)
 {
     if (!ot_kmac_config_enabled(s)) {
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -782,7 +782,8 @@ static bool ot_kmac_check_mode_and_strength(const OtKMACAppCfg *cfg)
     }
 }
 
-static inline uint8_t ot_kmac_get_prefix_byte(OtKMACState *s, size_t offset)
+static inline uint8_t
+ot_kmac_get_prefix_byte(const OtKMACState *s, size_t offset)
 {
     size_t reg = offset / sizeof(uint32_t);
     size_t byteoffset = offset - reg * sizeof(uint32_t);
@@ -798,7 +799,8 @@ static inline uint8_t ot_kmac_get_prefix_byte(OtKMACState *s, size_t offset)
     return (uint8_t)(s->regs[R_PREFIX_0 + reg] >> (byteoffset * 8u));
 }
 
-static size_t ot_kmac_left_decode(OtKMACState *s, size_t offset, size_t *value)
+static size_t ot_kmac_left_decode(const OtKMACState *s, size_t offset,
+                                  size_t *value)
 {
     size_t len;
     size_t val = 0;
@@ -857,7 +859,7 @@ error:
     return false;
 }
 
-static bool ot_kmac_check_kmac_sw_prefix(OtKMACState *s)
+static bool ot_kmac_check_kmac_sw_prefix(const OtKMACState *s)
 {
     /*
      * check that the encoded prefix in PREFIX_x registers starts with a "KMAC"
