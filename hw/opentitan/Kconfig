@@ -4,6 +4,7 @@ config OT_ADDRESS_SPACE
     bool
 
 config OT_AES
+    select OT_KEY_SINK
     select OT_PRNG
     bool
 

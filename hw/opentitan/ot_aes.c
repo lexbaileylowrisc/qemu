@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
+#include "hw/opentitan/ot_key_sink.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -128,8 +129,10 @@ REG32(STATUS, 0x84u)
      ALERT_RECOV_CTRL_UPDATE_ERR_SHIFT)
 
 #define OT_AES_DATA_SIZE (PARAM_NUM_REGS_DATA * sizeof(uint32_t))
-#define OT_AES_KEY_SIZE  (PARAM_NUM_REGS_KEY * sizeof(uint32_t))
 #define OT_AES_IV_SIZE   (PARAM_NUM_REGS_IV * sizeof(uint32_t))
+
+static_assert(OT_AES_KEY_SIZE == (PARAM_NUM_REGS_KEY * sizeof(uint32_t)),
+              "Invalid key size");
 
 #define OT_AES_CLOCK_ACTIVE "clock-active"
 #define OT_AES_CLOCK_INPUT  "clock-in"
@@ -189,6 +192,9 @@ static const char *OT_AES_MODE_NAMES[6u] = {
     "NONE", "ECB", "CBC", "CFB", "OFB", "CTR",
 };
 
+#define OT_AES_KEY_DWORD_COUNT (OT_AES_KEY_SIZE / sizeof(uint64_t))
+#define OT_AES_IV_DWORD_COUNT  (OT_AES_IV_SIZE / sizeof(uint64_t))
+
 typedef struct OtAESRegisters {
     /* public registers */
     uint32_t keyshare[PARAM_NUM_REGS_KEY * 2u]; /* wo */
@@ -218,8 +224,8 @@ typedef struct OtAESContext {
         symmetric_CBC cbc;
         symmetric_CTR ctr;
     };
-    uint64_t key[OT_AES_KEY_SIZE / sizeof(uint64_t)];
-    uint64_t iv[OT_AES_IV_SIZE / sizeof(uint64_t)];
+    uint64_t key[OT_AES_KEY_DWORD_COUNT];
+    uint64_t iv[OT_AES_IV_DWORD_COUNT];
     uint8_t src[OT_AES_DATA_SIZE];
     uint8_t dst[OT_AES_DATA_SIZE];
     bool key_ready; /* Key has been fully loaded */
@@ -236,14 +242,20 @@ typedef struct OtAESEDN {
     bool scheduled;
 } OtAESEDN;
 
-enum OtAESMode {
+typedef struct {
+    uint64_t share0[OT_AES_KEY_DWORD_COUNT];
+    uint64_t share1[OT_AES_KEY_DWORD_COUNT];
+    bool valid;
+} OtAESKey;
+
+typedef enum {
     AES_NONE,
     AES_ECB,
     AES_CBC,
     AES_CFB,
     AES_OFB,
     AES_CTR,
-};
+} OtAESMode;
 
 struct OtAESState {
     SysBusDevice parent_obj;
@@ -255,6 +267,7 @@ struct OtAESState {
 
     OtAESRegisters *regs;
     OtAESContext *ctx;
+    OtAESKey *sl_key;
     OtAESEDN edn;
     OtPrngState *prng;
     const char *clock_src_name; /* IRQ name once connected */
@@ -366,7 +379,7 @@ static inline bool ot_aes_is_encryption(OtAESRegisters *r)
     return FIELD_EX32(ctrl, CTRL_SHADOWED, OPERATION) != 0x2u;
 }
 
-static inline enum OtAESMode ot_aes_get_mode(OtAESRegisters *r)
+static inline OtAESMode ot_aes_get_mode(OtAESRegisters *r)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&r->ctrl);
     switch (FIELD_EX32(ctrl, CTRL_SHADOWED, MODE)) {
@@ -414,17 +427,11 @@ static inline void ot_aes_load_reseed_rate(OtAESState *s)
     s->reseed_count = reseed;
 }
 
-/* @todo temporary, as some helper functions are not yet used */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-
 static inline bool ot_aes_is_sideload(OtAESRegisters *r)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&r->ctrl);
     return FIELD_EX32(ctrl, CTRL_SHADOWED, SIDELOAD) == 1u;
 }
-
-#pragma GCC diagnostic pop
 
 static inline bool ot_aes_is_data_in_ready(OtAESRegisters *r)
 {
@@ -484,7 +491,7 @@ static void ot_aes_init_data(OtAESState *s, bool io)
 
 static bool ot_aes_is_mode_ready(OtAESRegisters *r, bool *need_iv)
 {
-    enum OtAESMode mode = ot_aes_get_mode(r);
+    OtAESMode mode = ot_aes_get_mode(r);
 
     switch (mode) {
     case AES_ECB:
@@ -517,6 +524,23 @@ static void ot_aes_trigger_reseed(OtAESState *s)
         r->trigger &= ~R_TRIGGER_PRNG_RESEED_MASK;
         xtrace_ot_aes_info(s->ot_id, "reseed on trigger disabled");
     }
+}
+
+static void ot_aes_sideload_key(OtAESState *s)
+{
+    OtAESKey *key = s->sl_key;
+
+    if (!key->valid) {
+        return;
+    }
+
+    OtAESContext *c = s->ctx;
+
+    for (unsigned ix = 0u; ix < OT_AES_KEY_DWORD_COUNT; ix++) {
+        c->key[ix] = key->share0[ix] ^ key->share1[ix];
+    }
+
+    c->key_ready = true;
 }
 
 static void ot_aes_update_key(OtAESState *s)
@@ -693,7 +717,7 @@ static void ot_aes_update_config(OtAESState *s)
     }
 
     size_t key_size = ot_aes_get_key_length(r);
-    enum OtAESMode mode = ot_aes_get_mode(r);
+    OtAESMode mode = ot_aes_get_mode(r);
 
     int rc;
 
@@ -734,7 +758,7 @@ static void ot_aes_update_config(OtAESState *s)
     }
 }
 
-static void ot_aes_finalize(OtAESState *s, enum OtAESMode mode)
+static void ot_aes_finalize(OtAESState *s, OtAESMode mode)
 {
     int rc;
 
@@ -827,7 +851,7 @@ static void ot_aes_process(OtAESState *s)
     OtAESRegisters *r = s->regs;
     OtAESContext *c = s->ctx;
 
-    enum OtAESMode mode = ot_aes_get_mode(s->regs);
+    OtAESMode mode = ot_aes_get_mode(s->regs);
     bool encrypt = ot_aes_is_encryption(r);
 
     int rc;
@@ -1052,6 +1076,27 @@ static void ot_aes_clock_input(void *opaque, int irq, int level)
     /* TODO: disable AES execution when PCLK is 0 */
 }
 
+static void ot_aes_push_key(OtKeySinkIf *ifd, const uint8_t *share0,
+                            const uint8_t *share1, size_t key_len, bool valid)
+{
+    g_assert(!key_len || key_len == OT_AES_KEY_SIZE);
+
+    OtAESState *s = OT_AES(ifd);
+    OtAESKey *key = s->sl_key;
+
+    if (key_len && share0) {
+        memcpy(key->share0, share0, key_len);
+    } else {
+        memset(key->share0, 0, OT_AES_KEY_SIZE);
+    }
+    if (key_len && share1) {
+        memcpy(key->share1, share1, key_len);
+    } else {
+        memset(key->share1, 0, OT_AES_KEY_SIZE);
+    }
+    key->valid = valid;
+}
+
 static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtAESState *s = opaque;
@@ -1189,6 +1234,12 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     case R_KEY_SHARE1_5:
     case R_KEY_SHARE1_6:
     case R_KEY_SHARE1_7:
+        if (ot_aes_is_sideload(r)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: %s: key share disabled, sideload is active\n",
+                          __func__, s->ot_id);
+            break;
+        }
         if (ot_aes_is_idle(s)) {
             r->keyshare[reg - R_KEY_SHARE0_0] = val32;
             set_bit((int64_t)(reg - R_KEY_SHARE0_0), r->keyshare_bm);
@@ -1230,7 +1281,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
                  R_CTRL_SHADOWED_PRNG_RESEED_RATE_MASK |
                  R_CTRL_SHADOWED_MANUAL_OPERATION_MASK |
                  R_CTRL_SHADOWED_FORCE_ZERO_MASKS_MASK;
-        enum OtAESMode prev_mode = ot_aes_get_mode(s->regs);
+        OtAESMode prev_mode = ot_aes_get_mode(s->regs);
         switch (ot_shadow_reg_write(&r->ctrl, val32)) {
         case OT_SHADOW_REG_STAGED:
             break;
@@ -1250,6 +1301,9 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
             r->status |= R_STATUS_ALERT_RECOV_CTRL_UPDATE_ERR_MASK;
             ot_aes_update_alert(s);
             break;
+        }
+        if (ot_aes_is_sideload(s->regs)) {
+            ot_aes_sideload_key(s);
         }
         break;
     case R_CTRL_AUX_SHADOWED:
@@ -1325,6 +1379,7 @@ static void ot_aes_reset_enter(Object *obj, ResetType type)
 
     memset(s->ctx, 0, sizeof(*s->ctx));
     memset(r, 0, sizeof(*r));
+    memset(s->sl_key, 0, sizeof(*s->sl_key));
 
     ot_shadow_reg_init(&r->ctrl, 0x1181u);
     ot_shadow_reg_init(&r->ctrl_aux, 1u);
@@ -1406,6 +1461,7 @@ static void ot_aes_init(Object *obj)
 
     s->regs = g_new0(OtAESRegisters, 1u);
     s->ctx = g_new0(OtAESContext, 1u);
+    s->sl_key = g_new0(OtAESKey, 1u);
 
     /* aes_desc is defined in libtomcrypt */
     s->ctx->aes_cipher = register_cipher(&aes_desc);
@@ -1440,6 +1496,9 @@ static void ot_aes_class_init(ObjectClass *klass, void *data)
     OtAESClass *ac = OT_AES_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_aes_reset_enter, NULL,
                                        &ot_aes_reset_exit, &ac->parent_phases);
+
+    OtKeySinkIfClass *kc = OT_KEY_SINK_IF_CLASS(klass);
+    kc->push_key = &ot_aes_push_key;
 }
 
 static const TypeInfo ot_aes_info = {
@@ -1449,6 +1508,11 @@ static const TypeInfo ot_aes_info = {
     .instance_init = &ot_aes_init,
     .class_size = sizeof(OtAESClass),
     .class_init = &ot_aes_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_OT_KEY_SINK_IF },
+            {},
+        },
 };
 
 static void ot_aes_register_types(void)

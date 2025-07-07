@@ -33,4 +33,6 @@
 #define TYPE_OT_AES "ot-aes"
 OBJECT_DECLARE_TYPE(OtAESState, OtAESClass, OT_AES)
 
+#define OT_AES_KEY_SIZE (256u / 8u)
+
 #endif /* HW_OPENTITAN_OT_AES_H */
