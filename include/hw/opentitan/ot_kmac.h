@@ -100,36 +100,30 @@ typedef struct {
  */
 typedef void (*OtKmacResponse)(void *opaque, const OtKMACAppRsp *rsp);
 
-/**
- * Connect a application to the KMAC device.
- *
- * @s the KMAC device.
- * @app_idx the application index.
- * @cfg pointer to the KMAC configuration for this application.
- * @fn the function to call when an request has been processed.
- * @opaque a opaque pointer to forward to the response function.
- */
-typedef void (*OtKmacConnectApp)(OtKMACState *s, unsigned app_idx,
-                                 const OtKMACAppCfg *cfg, OtKmacResponse fn,
-                                 void *opaque);
-
-/**
- * Send a new application request to the KMAC device.
- *
- * @s the KMAC device.
- * @app_idx the application index.
- * @req the KMAC request to process.
- */
-typedef void (*OtKmacAppRequest)(OtKMACState *s, unsigned app_idx,
-                                 const OtKMACAppReq *req);
-
 struct OtKMACClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 
-    OtKmacConnectApp connect_app;
-    OtKmacAppRequest app_request;
-};
+    /*
+     * Connect a application to the KMAC device.
+     *
+     * @app_idx the application index.
+     * @cfg pointer to the KMAC configuration for this application.
+     * @fn the function to call when an request has been processed.
+     * @opaque a opaque pointer to forward to the response function.
+     */
+    void (*connect_app)(OtKMACState *s, unsigned app_idx,
+                        const OtKMACAppCfg *cfg, OtKmacResponse fn,
+                        void *opaque);
 
+    /*
+     * Send a new application request to the KMAC device.
+     *
+     * @app_idx the application index.
+     * @req the KMAC request to process.
+     */
+    void (*app_request)(OtKMACState *s, unsigned app_idx,
+                        const OtKMACAppReq *req);
+};
 
 #endif /* HW_OPENTITAN_OT_KMAC_H */
