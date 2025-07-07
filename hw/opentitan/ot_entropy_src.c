@@ -1019,7 +1019,7 @@ static bool ot_entropy_src_fill_noise(OtEntropySrcState *s)
 
     /* push the whole entropy buffer into the input FIFO */
     unsigned pos = 0;
-    while (!ot_fifo32_is_full(&s->input_fifo) && pos < ES_WORD_COUNT) {
+    while (!ot_fifo32_is_full(&s->input_fifo) && pos < ARRAY_SIZE(buffer)) {
         ot_fifo32_push(&s->input_fifo, buffer[pos++]);
     }
 
