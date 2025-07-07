@@ -664,70 +664,6 @@ static inline void ot_hmac_wipe_buffer(OtHMACState *s, uint32_t *buffer,
     }
 }
 
-static uint64_t ot_hmac_fifo_read(void *opaque, hwaddr addr, unsigned size)
-{
-    (void)opaque;
-    (void)addr;
-    (void)size;
-    qemu_log_mask(LOG_GUEST_ERROR, "%s: MSG_FIFO is write only\n", __func__);
-
-    return 0;
-}
-
-static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
-                               unsigned size)
-{
-    OtHMACState *s = OT_HMAC(opaque);
-
-    uint32_t pc = ibex_get_current_pc();
-    trace_ot_hmac_fifo_write(s->ot_id, (uint32_t)addr, (uint32_t)value, size,
-                             pc);
-
-    if (!s->regs->cmd) {
-        ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_DISALLOWED);
-        return;
-    }
-
-    if (!(s->regs->cfg & R_CFG_SHA_EN_MASK)) {
-        ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_SHA_DISABLED);
-        return;
-    }
-
-    if (s->regs->cfg & R_CFG_ENDIAN_SWAP_MASK) {
-        if (size == 4u) {
-            value = bswap32((uint32_t)value);
-        } else if (size == 2u) {
-            value = bswap16((uint16_t)value);
-        }
-    }
-
-    ibex_irq_set(&s->clkmgr, true);
-
-    for (unsigned i = 0; i < size; i++) {
-        uint8_t b = value;
-        g_assert(!fifo8_is_full(&s->input_fifo));
-        fifo8_push(&s->input_fifo, b);
-        value >>= 8u;
-    }
-
-    s->regs->msg_length += (uint64_t)size * 8u;
-
-    /*
-     * Note: real HW may stall the bus till some room is available in the input
-     * FIFO. In QEMU, we do not want to stall the I/O thread to emulate this
-     * feature. The workaround is to let the FIFO fill up with an arbitrary
-     * length, always smaller than the FIFO capacity, here half the size of the
-     * FIFO then process the whole FIFO content in one step. This let the FIFO
-     * depth register to update on each call as the real HW. However the FIFO
-     * can never be full, which is not supposed to occur on the real HW anyway
-     * since the HMAC is reportedly faster than the Ibex capability to fill in
-     * the FIFO. Could be different with DMA access though.
-     */
-    if (fifo8_num_used(&s->input_fifo) >= OT_HMAC_FIFO_LENGTH / 2u) {
-        ot_hmac_process_fifo(s);
-    }
-}
-
 static uint64_t ot_hmac_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtHMACState *s = OT_HMAC(opaque);
@@ -1187,6 +1123,70 @@ static void ot_hmac_regs_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
+static uint64_t ot_hmac_fifo_read(void *opaque, hwaddr addr, unsigned size)
+{
+    (void)opaque;
+    (void)addr;
+    (void)size;
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: MSG_FIFO is write only\n", __func__);
+
+    return 0;
+}
+
+static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
+                               unsigned size)
+{
+    OtHMACState *s = OT_HMAC(opaque);
+
+    uint32_t pc = ibex_get_current_pc();
+    trace_ot_hmac_fifo_write(s->ot_id, (uint32_t)addr, (uint32_t)value, size,
+                             pc);
+
+    if (!s->regs->cmd) {
+        ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_DISALLOWED);
+        return;
+    }
+
+    if (!(s->regs->cfg & R_CFG_SHA_EN_MASK)) {
+        ot_hmac_report_error(s, R_ERR_CODE_PUSH_MSG_WHEN_SHA_DISABLED);
+        return;
+    }
+
+    if (s->regs->cfg & R_CFG_ENDIAN_SWAP_MASK) {
+        if (size == 4u) {
+            value = bswap32((uint32_t)value);
+        } else if (size == 2u) {
+            value = bswap16((uint16_t)value);
+        }
+    }
+
+    ibex_irq_set(&s->clkmgr, true);
+
+    for (unsigned i = 0; i < size; i++) {
+        uint8_t b = value;
+        g_assert(!fifo8_is_full(&s->input_fifo));
+        fifo8_push(&s->input_fifo, b);
+        value >>= 8u;
+    }
+
+    s->regs->msg_length += (uint64_t)size * 8u;
+
+    /*
+     * Note: real HW may stall the bus till some room is available in the input
+     * FIFO. In QEMU, we do not want to stall the I/O thread to emulate this
+     * feature. The workaround is to let the FIFO fill up with an arbitrary
+     * length, always smaller than the FIFO capacity, here half the size of the
+     * FIFO then process the whole FIFO content in one step. This let the FIFO
+     * depth register to update on each call as the real HW. However the FIFO
+     * can never be full, which is not supposed to occur on the real HW anyway
+     * since the HMAC is reportedly faster than the Ibex capability to fill in
+     * the FIFO. Could be different with DMA access though.
+     */
+    if (fifo8_num_used(&s->input_fifo) >= OT_HMAC_FIFO_LENGTH / 2u) {
+        ot_hmac_process_fifo(s);
+    }
+}
+
 static Property ot_hmac_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtHMACState, ot_id),
     DEFINE_PROP_END_OF_LIST(),
@@ -1211,6 +1211,38 @@ static const MemoryRegionOps ot_hmac_fifo_ops = {
         .max_access_size = 4u,
     },
 };
+
+static void ot_hmac_reset_enter(Object *obj, ResetType type)
+{
+    OtHMACClass *c = OT_HMAC_GET_CLASS(obj);
+    OtHMACState *s = OT_HMAC(obj);
+    OtHMACRegisters *r = s->regs;
+
+    if (c->parent_phases.enter) {
+        c->parent_phases.enter(obj, type);
+    }
+
+    ibex_irq_set(&s->clkmgr, false);
+
+    memset(s->ctx, 0, sizeof(*(s->ctx)));
+    memset(s->regs, 0, sizeof(*(s->regs)));
+
+    r->cfg = 0x4100u;
+
+    ot_hmac_update_irqs(s);
+    ot_hmac_update_alert(s);
+
+    fifo8_reset(&s->input_fifo);
+}
+
+static void ot_hmac_realize(DeviceState *dev, Error **errp)
+{
+    (void)errp;
+
+    OtHMACState *s = OT_HMAC(dev);
+
+    g_assert(s->ot_id);
+}
 
 static void ot_hmac_init(Object *obj)
 {
@@ -1238,38 +1270,6 @@ static void ot_hmac_init(Object *obj)
 
     /* FIFO sizes as per OT Spec */
     fifo8_create(&s->input_fifo, OT_HMAC_FIFO_LENGTH);
-}
-
-static void ot_hmac_realize(DeviceState *dev, Error **errp)
-{
-    (void)errp;
-
-    OtHMACState *s = OT_HMAC(dev);
-
-    g_assert(s->ot_id);
-}
-
-static void ot_hmac_reset_enter(Object *obj, ResetType type)
-{
-    OtHMACClass *c = OT_HMAC_GET_CLASS(obj);
-    OtHMACState *s = OT_HMAC(obj);
-    OtHMACRegisters *r = s->regs;
-
-    if (c->parent_phases.enter) {
-        c->parent_phases.enter(obj, type);
-    }
-
-    ibex_irq_set(&s->clkmgr, false);
-
-    memset(s->ctx, 0, sizeof(*(s->ctx)));
-    memset(s->regs, 0, sizeof(*(s->regs)));
-
-    r->cfg = 0x4100u;
-
-    ot_hmac_update_irqs(s);
-    ot_hmac_update_alert(s);
-
-    fifo8_reset(&s->input_fifo);
 }
 
 static void ot_hmac_class_init(ObjectClass *klass, void *data)
