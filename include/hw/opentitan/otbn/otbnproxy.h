@@ -67,9 +67,12 @@ ot_otbn_proxy_new(ot_otbn_fetch_entropy_fn urnd_req_entropy, void *urnd_opaque,
 extern void ot_otbn_proxy_start(OTBNProxy proxy, bool test_mode,
                                 const char *logname, bool log_asm);
 extern void ot_otbn_proxy_terminate(OTBNProxy proxy);
-extern int ot_otbn_proxy_push_entropy(OTBNProxy proxy, uint32_t rndix,
-                                      const uint8_t *seed, uint32_t len,
-                                      bool fips);
+extern bool ot_otbn_proxy_push_entropy(OTBNProxy proxy, uint32_t rndix,
+                                       const uint8_t *seed, uint32_t len,
+                                       bool fips);
+extern bool ot_otbn_proxy_push_key(OTBNProxy proxy, const uint8_t *share0,
+                                   const uint8_t *share1, uint32_t len,
+                                   bool valid);
 extern int ot_otbn_proxy_execute(OTBNProxy proxy, bool dumpstate);
 extern int ot_otbn_proxy_wipe_memory(OTBNProxy proxy, bool doi);
 extern bool ot_otbn_proxy_acknowledge_execution(OTBNProxy proxy);

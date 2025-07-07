@@ -41,6 +41,7 @@
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
 #include "hw/opentitan/ot_fifo32.h"
+#include "hw/opentitan/ot_key_sink.h"
 #include "hw/opentitan/ot_otbn.h"
 #include "hw/opentitan/otbn/otbnproxy.h"
 #include "hw/qdev-properties.h"
@@ -50,6 +51,8 @@
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
 #include "trace.h"
+
+#undef OT_OTBN_DEBUG
 
 /* clang-format off */
 REG32(INTR_STATE, 0x00u)
@@ -136,11 +139,11 @@ typedef struct {
     bool entropy_requested; /* EDN request on-going */
 } OtOTBNRandom;
 
-typedef enum {
+enum {
     ALERT_FATAL,
     ALERT_RECOVERABLE,
     ALERT_COUNT,
-} OtOtbnAlert;
+};
 
 struct OtOTBNState {
     /* <private> */
@@ -161,6 +164,7 @@ struct OtOTBNState {
     OTBNProxy proxy;
     unsigned pclk; /* Current input clock */
     const char *clock_src_name; /* IRQ name once connected */
+    char *hexstr;
 
     uint32_t intr_state;
     uint32_t intr_enable;
@@ -183,6 +187,17 @@ struct OtOTBNClass {
     SysBusDeviceClass parent_class;
     ResettablePhases parent_phases;
 };
+
+#ifdef OT_OTBN_DEBUG
+#define OT_OTBN_HEXSTR_SIZE  (OT_OTBN_KEY_SIZE * 2u + 2u)
+#define TRACE_OTBN(msg, ...) qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
+#define ot_otbn_hexdump(_s_, _b_, _l_) \
+    ot_common_lhexdump((const uint8_t *)_b_, _l_, false, (_s_)->hexstr, \
+                       OT_OTBN_HEXSTR_SIZE)
+#else
+#define TRACE_OTBN(msg, ...)
+#define ot_otbn_hexdump(_s_, _b_, _l_)
+#endif
 
 static void ot_otbn_request_entropy(OtOTBNRandom *rnd);
 
@@ -326,7 +341,7 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
     num *= sizeof(uint32_t);
     g_assert(s != NULL);
     unsigned rnd_ix = (unsigned)(rnd - &s->rnds[0]);
-    int res;
+    bool res;
     switch (rnd_ix) {
     case OT_OTBN_URND:
         trace_ot_otbn_proxy_push_entropy(s->ot_id, "urnd", !rnd->no_fips);
@@ -344,7 +359,7 @@ static void ot_otbn_fill_entropy(void *opaque, uint32_t bits, bool fips)
     }
     ot_fifo32_reset(&rnd->packer);
     rnd->no_fips = false;
-    if (res) {
+    if (!res) {
         trace_ot_otbn_error(s->ot_id, "cannot push entropy");
     }
 }
@@ -427,6 +442,32 @@ static void ot_otbn_clock_input(void *opaque, int irq, int level)
     s->pclk = (unsigned)level;
 
     /* TODO: disable OTBN execution when PCLK is 0 */
+}
+
+static void ot_otbn_push_key(OtKeySinkIf *ifd, const uint8_t *share0,
+                             const uint8_t *share1, size_t key_len, bool valid)
+{
+    g_assert(!key_len || key_len == OT_OTBN_KEY_SIZE);
+
+    OtOTBNState *s = OT_OTBN(ifd);
+    static const uint8_t empty_share[OT_OTBN_KEY_SIZE] = { 0 };
+
+    if (!key_len || !share0) {
+        key_len = sizeof(empty_share);
+        share0 = empty_share;
+    }
+    if (!key_len || !share1) {
+        key_len = sizeof(empty_share);
+        share1 = empty_share;
+    }
+
+    TRACE_OTBN("%s: share0 %s, valid: %u", s->ot_id,
+               ot_otbn_hexdump(s, share0, OT_OTBN_KEY_SIZE), valid);
+
+    bool res = ot_otbn_proxy_push_key(s->proxy, share0, share1, key_len, valid);
+    if (!res) {
+        trace_ot_otbn_error(s->ot_id, "Cannot push sideload key");
+    }
 }
 
 static uint64_t ot_otbn_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -790,6 +831,10 @@ static void ot_otbn_init(Object *obj)
         ot_otbn_proxy_new(&ot_otbn_trigger_entropy_req, &s->rnds[OT_OTBN_URND],
                           &ot_otbn_trigger_entropy_req, &s->rnds[OT_OTBN_RND],
                           &ot_otbn_signal_on_completion, s);
+
+#ifdef OT_OTBN_DEBUG
+    s->hexstr = g_new0(char, OT_OTBN_HEXSTR_SIZE);
+#endif
 }
 
 static void ot_otbn_class_init(ObjectClass *klass, void *data)
@@ -805,6 +850,9 @@ static void ot_otbn_class_init(ObjectClass *klass, void *data)
     OtOTBNClass *oc = OT_OTBN_CLASS(klass);
     resettable_class_set_parent_phases(rc, &ot_otbn_reset_enter, NULL,
                                        &ot_otbn_reset_exit, &oc->parent_phases);
+
+    OtKeySinkIfClass *kc = OT_KEY_SINK_IF_CLASS(klass);
+    kc->push_key = &ot_otbn_push_key;
 }
 
 static const TypeInfo ot_otbn_info = {
@@ -814,6 +862,11 @@ static const TypeInfo ot_otbn_info = {
     .instance_init = &ot_otbn_init,
     .class_size = sizeof(OtOTBNClass),
     .class_init = &ot_otbn_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_OT_KEY_SINK_IF },
+            {},
+        },
 };
 
 static void ot_otbn_register_types(void)

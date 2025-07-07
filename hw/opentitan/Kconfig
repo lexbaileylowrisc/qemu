@@ -94,8 +94,9 @@ config OT_MBX
     bool
 
 config OT_OTBN
-    bool
+    select OT_KEY_SINK
     select OT_BIGNUMBER
+    bool
 
 config OT_OTP
     select OT_OTP_BE_IF

@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use super::comm;
+use super::key;
 use super::memory;
 use super::otbn;
 use super::random;
@@ -45,6 +46,9 @@ pub struct Proxy {
     /// True random generator from EDN
     rnd: Arc<random::Rnd>,
 
+    /// Sideload key
+    key: Arc<key::Key>,
+
     /// Transient optional callback to invoke on completion
     on_complete: Option<Box<dyn comm::Callback>>,
 }
@@ -60,6 +64,7 @@ impl Default for Proxy {
             core_id: None,
             syncurnd: Arc::new(random::SyncUrnd::new()),
             rnd: Arc::new(random::Rnd::new()),
+            key: Arc::new(key::Key::new()),
             on_complete: None,
         }
     }
@@ -142,6 +147,7 @@ impl Proxy {
             let on_complete = self.on_complete.take();
             let urnd = self.syncurnd.clone();
             let rnd = Arc::clone(&self.rnd);
+            let key = Arc::clone(&self.key);
             let log_name: Option<String> = log_name.map(|l| l.into());
             self.join_handle = Some(
                 executer
@@ -153,6 +159,7 @@ impl Proxy {
                             dmem,
                             urnd,
                             rnd,
+                            key,
                             on_complete,
                             log_name,
                             log_asm,
@@ -247,6 +254,21 @@ impl Proxy {
                 1 => self.rnd.fill(seed, fips),
                 _ => return false,
             }
+            return true;
+        }
+
+        false
+    }
+
+    /// Push a 384-bit key buffer
+    pub fn push_key(&mut self, share0: &[u8], share1: &[u8], valid: bool) -> bool {
+        if share0.len() != 48 && share1.len() != 48 {
+            return false;
+        }
+        if let (Ok(share0), Ok(share1)) =
+            (<&[u8; 48]>::try_from(share0), <&[u8; 48]>::try_from(share1))
+        {
+            self.key.fill(share0, share1, valid);
             return true;
         }
 
@@ -431,14 +453,26 @@ pub unsafe extern "C" fn ot_otbn_proxy_push_entropy(
     seed: *const u8,
     len: u32,
     fips: bool,
-) -> c_int {
+) -> bool {
     assert!(!seed.is_null());
     let rust_seed = slice::from_raw_parts(seed, len as usize);
-    if proxy.unwrap().push_entropy(rndix as usize, rust_seed, fips) {
-        0
-    } else {
-        -1
-    }
+    proxy.unwrap().push_entropy(rndix as usize, rust_seed, fips)
+}
+
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn ot_otbn_proxy_push_key(
+    proxy: Option<&mut Proxy>,
+    share0: *const u8,
+    share1: *const u8,
+    len: u32,
+    valid: bool,
+) -> bool {
+    assert!(!share0.is_null());
+    assert!(!share1.is_null());
+    let rust_share0 = slice::from_raw_parts(share0, len as usize);
+    let rust_share1 = slice::from_raw_parts(share1, len as usize);
+    proxy.unwrap().push_key(rust_share0, rust_share1, valid)
 }
 
 #[no_mangle]

@@ -21,6 +21,7 @@ use super::csrs;
 use super::insn_decode;
 use super::insn_disasm;
 use super::insn_exec;
+use super::key;
 use super::memory;
 use super::random;
 use super::Memory;
@@ -122,6 +123,7 @@ impl Executer {
         dmem: Arc<Mutex<memory::MemoryRegion>>,
         syncurnd: Arc<random::SyncUrnd>,
         rnd: Arc<random::Rnd>,
+        key: Arc<key::Key>,
         on_complete: Option<Box<dyn comm::Callback>>,
         log_name: Option<String>,
         log_asm: bool,
@@ -137,7 +139,7 @@ impl Executer {
             log_file = None;
         }
         Self {
-            hart_state: insn_exec::HartState::new(syncurnd.urnd(), rnd),
+            hart_state: insn_exec::HartState::new(syncurnd.urnd(), rnd, key),
             imem,
             dmem,
             channel,
@@ -157,6 +159,7 @@ impl Executer {
         dmem: Arc<Mutex<memory::MemoryRegion>>,
         urnd: Arc<random::SyncUrnd>,
         rnd: Arc<random::Rnd>,
+        key: Arc<key::Key>,
         on_complete: Option<Box<dyn comm::Callback>>,
         log_name: Option<String>,
         log_asm: bool,
@@ -168,6 +171,7 @@ impl Executer {
             dmem,
             urnd,
             rnd,
+            key,
             on_complete,
             log_name,
             log_asm,
@@ -276,6 +280,7 @@ impl Executer {
                     ExceptionCause::ECallStack => (false, ErrBits::CALL_STACK.bits()),
                     ExceptionCause::EIllegalInsn => (false, ErrBits::ILLEGAL_INSN.bits()),
                     ExceptionCause::ELoop => (false, ErrBits::LOOP.bits()),
+                    ExceptionCause::EKeyInvalid => (false, ErrBits::KEY_INVALID.bits()),
                     ExceptionCause::ERndRepChkFail => (false, ErrBits::RND_REP_CHK_FAIL.bits()),
                     ExceptionCause::ERndFipsChkFail => (false, ErrBits::RND_FIPS_CHK_FAIL.bits()),
                     ExceptionCause::EFatal => {

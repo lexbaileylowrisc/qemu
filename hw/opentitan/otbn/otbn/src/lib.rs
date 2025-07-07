@@ -18,6 +18,7 @@ pub mod insn_disasm;
 pub mod insn_exec;
 pub mod insn_format;
 pub mod insn_proc;
+pub mod key;
 pub mod memory;
 pub mod otbn;
 pub mod proxy;
@@ -32,6 +33,7 @@ pub enum ExceptionCause {
     ECallStack = 1 << 2,
     EIllegalInsn = 1 << 3,
     ELoop = 1 << 4,
+    EKeyInvalid = 1 << 5,
     ERndRepChkFail = 1 << 6,
     ERndFipsChkFail = 1 << 7,
     EFatal = 1 << 20,

@@ -15,6 +15,7 @@ use super::csrs;
 use super::insn_decode;
 use super::insn_format;
 use super::insn_proc;
+use super::key;
 use super::random;
 use super::Memory;
 use crate::{ExceptionCause, PRNG};
@@ -87,7 +88,7 @@ pub struct HartState {
 }
 
 impl HartState {
-    pub fn new(urnd: Arc<Mutex<dyn PRNG>>, rnd: Arc<random::Rnd>) -> Self {
+    pub fn new(urnd: Arc<Mutex<dyn PRNG>>, rnd: Arc<random::Rnd>, key: Arc<key::Key>) -> Self {
         HartState {
             registers: [0; 32],
             wregisters: [0.as_u256(); 32],
@@ -95,7 +96,7 @@ impl HartState {
             loopstack: Vec::with_capacity(8),
             hwstack: Vec::with_capacity(8),
             updated: StateTracker::default(),
-            csr_set: csrs::CSRSet::new(urnd, rnd),
+            csr_set: csrs::CSRSet::new(urnd, rnd, key),
         }
     }
 
@@ -159,7 +160,7 @@ impl HartState {
             ))?;
 
         if let Err(exc) = csr.write(data) {
-           return Err(InstructionTrap::Exception(exc, Some(csr_addr)));
+            return Err(InstructionTrap::Exception(exc, Some(csr_addr)));
         }
         self.updated.csr = Some((false, csr_addr));
         Ok(())
@@ -174,7 +175,8 @@ impl HartState {
                 Some(csr_addr),
             ))?;
 
-        csr.read().map_err(|exc| InstructionTrap::Exception(exc, Some(csr_addr)))
+        csr.read()
+            .map_err(|exc| InstructionTrap::Exception(exc, Some(csr_addr)))
     }
 
     fn write_wsr(&mut self, wsr_addr: u32, data: u256) -> Result<(), InstructionTrap> {
@@ -187,7 +189,7 @@ impl HartState {
             ))?;
 
         if let Err(exc) = wsr.write(data) {
-           return Err(InstructionTrap::Exception(exc, Some(wsr_addr)));
+            return Err(InstructionTrap::Exception(exc, Some(wsr_addr)));
         }
         self.updated.csr = Some((true, wsr_addr));
         Ok(())
@@ -202,7 +204,8 @@ impl HartState {
                 Some(wsr_addr),
             ))?;
 
-        wsr.read().map_err(|exc| InstructionTrap::Exception(exc, Some(wsr_addr)))
+        wsr.read()
+            .map_err(|exc| InstructionTrap::Exception(exc, Some(wsr_addr)))
     }
 
     fn set_mlz_wide_flags(&mut self, fg: usize, carry: bool, value: u256) {

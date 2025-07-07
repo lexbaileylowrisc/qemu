@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use ethnum::{u256, U256};
 
 use super::insn_proc;
+use super::key;
 use super::otbn::FlagMode;
 use super::random;
 use super::{CSR, WSR};
@@ -333,6 +334,36 @@ impl CSR for CSRRndPrefetcher {
     }
 }
 
+/// CryptoSecure Random generator
+struct CSRWideKey {
+    key: Arc<key::Key>,
+    share: u8,
+    high: bool,
+}
+
+impl CSRWideKey {
+    pub fn new(key: Arc<key::Key>, share: u8, high: bool) -> Self {
+        Self { key, share, high }
+    }
+}
+
+impl WSR for CSRWideKey {
+    fn read(&self) -> Result<u256, ExceptionCause> {
+        let store = self.key.store.lock().unwrap();
+        if !store.valid {
+            return Err(ExceptionCause::EKeyInvalid);
+        }
+        let share = if self.share == 0 { store.lo } else { store.hi };
+        let value = share[self.high as usize];
+        Ok(value)
+    }
+
+    fn write(&mut self, _val: u256) -> Result<(), ExceptionCause> {
+        // as per OTBN definition, do not generate an error for R/O CSR
+        Ok(())
+    }
+}
+
 #[derive(Default)]
 struct CSRWideGeneric {
     pub val: u256,
@@ -379,16 +410,16 @@ pub struct CSRSet {
     wrnd: CSRWideRnd,
     wurnd: CSRWideUrnd,
     acc: CSRWideGeneric,
-    key_s0_l: CSRWideGeneric,
-    key_s0_h: CSRWideGeneric,
-    key_s1_l: CSRWideGeneric,
-    key_s1_h: CSRWideGeneric,
+    key_s0_l: CSRWideKey,
+    key_s0_h: CSRWideKey,
+    key_s1_l: CSRWideKey,
+    key_s1_h: CSRWideKey,
 
     shared_flags: SharedFlags,
 }
 
 impl CSRSet {
-    pub fn new(urnd: Arc<Mutex<dyn PRNG>>, rnd: Arc<random::Rnd>) -> Self {
+    pub fn new(urnd: Arc<Mutex<dyn PRNG>>, rnd: Arc<random::Rnd>, key: Arc<key::Key>) -> Self {
         let mut csrs = Self {
             fg0: CSRFlagGroup::default(),
             fg1: CSRFlagGroup::default(),
@@ -401,10 +432,10 @@ impl CSRSet {
             wrnd: CSRWideRnd::new(rnd),
             wurnd: CSRWideUrnd::new(urnd.clone()),
             acc: CSRWideGeneric::default(),
-            key_s0_l: CSRWideGeneric::default(),
-            key_s0_h: CSRWideGeneric::default(),
-            key_s1_l: CSRWideGeneric::default(),
-            key_s1_h: CSRWideGeneric::default(),
+            key_s0_l: CSRWideKey::new(key.clone(), 0, false),
+            key_s0_h: CSRWideKey::new(key.clone(), 0, true),
+            key_s1_l: CSRWideKey::new(key.clone(), 1, false),
+            key_s1_h: CSRWideKey::new(key.clone(), 1, true),
             shared_flags: SharedFlags::default(),
         };
         csrs.fg0.plug(&csrs.shared_flags, FlagMode::Fg0);
@@ -520,29 +551,6 @@ impl CSRSet {
     }
 
     pub fn set_test_mode(&mut self, enable: bool) {
-        if enable {
-            self.key_s0_l.val = U256::from_str_radix(
-                "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-                16,
-            )
-            .unwrap();
-            self.key_s0_h.val =
-                U256::from_str_radix("deadbeefdeadbeefdeadbeefdeadbeef", 16).unwrap();
-            self.key_s1_l.val = U256::from_str_radix(
-                "baadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00dbaadf00d",
-                16,
-            )
-            .unwrap();
-            self.key_s1_h.val =
-                U256::from_str_radix("baadf00dbaadf00dbaadf00dbaadf00d", 16).unwrap();
-        } else {
-            self.key_s0_l.val = U256::from(0u32);
-            self.key_s0_h.val = U256::from(0u32);
-            self.key_s1_l.val = U256::from(0u32);
-            self.key_s1_h.val = U256::from(0u32);
-        }
-
-        // self.wrnd.test_mode = enable;
         self.wurnd.test_mode = enable;
     }
 }
