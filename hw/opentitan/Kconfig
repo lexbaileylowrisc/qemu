@@ -74,6 +74,9 @@ config OT_IBEX_WRAPPER
     select OT_VMAPPER
     bool
 
+config OT_KEY_SINK
+    bool
+
 config OT_KEYMGR_DPE
     select OT_LC_CTRL
     select OT_ROM_CTRL
