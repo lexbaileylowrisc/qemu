@@ -16,6 +16,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/bitops.h"
+#include "qemu/log.h"
+#include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_present.h"
 
 /* warning: not thread safe when enabled */
@@ -30,6 +32,9 @@ typedef struct {
 
 struct OtPresentState {
     uint64_t keys[OT_PRESENT_ROUND];
+#ifdef OT_PRESENT_ROUND
+    char *hexstr;
+#endif
 };
 
 static const uint8_t OT_PRESENT_SBOX4[16u] = {
@@ -146,24 +151,12 @@ static uint64_t perm_inv_layer(uint64_t data)
 }
 
 #ifdef OT_PRESENT_DEBUG
-static char hexbuf[256u];
-static const char *ot_present_hexdump(const void *data, size_t size)
-{
-    static const char _hex[] = "0123456789abcdef";
-    const uint8_t *buf = (const uint8_t *)data;
-
-    if (size > ((sizeof(hexbuf) / 2u) - 2u)) {
-        size = sizeof(hexbuf) / 2u - 2u;
-    }
-
-    char *hexstr = hexbuf;
-    for (size_t ix = 0; ix < size; ix++) {
-        hexstr[(ix * 2u)] = _hex[(buf[ix] >> 4u) & 0xfu];
-        hexstr[(ix * 2u) + 1u] = _hex[buf[ix] & 0xfu];
-    }
-    hexstr[size * 2u] = '\0';
-    return hexbuf;
-}
+#define OT_PRESENT_HEXSTR_SIZE 256u
+#define ot_present_hexdump(_s_, _b_, _l_) \
+    ot_common_lhexdump((const uint8_t *)_b_, _l_, false, (_s_)->hexstr, \
+                       OT_PRESENT_HEXSTR_SIZE)
+#else
+#define ot_present_hexdump(_s_, _b_, _l_)
 #endif
 
 /*----------------------------------------------------------------------------*/
@@ -172,7 +165,11 @@ static const char *ot_present_hexdump(const void *data, size_t size)
 
 OtPresentState *ot_present_new(void)
 {
-    return g_new0(OtPresentState, 1u);
+    OtPresentState *ps = g_new0(OtPresentState, 1u);
+#ifdef OT_PRESENT_DEBUG
+    ps->hexstr = g_new0(char, OT_PRESENT_HEXSTR_SIZE);
+#endif
+    return ps;
 }
 
 void ot_present_free(OtPresentState *ps)
@@ -184,7 +181,7 @@ void ot_present_init(OtPresentState *ps, const uint8_t *key)
 {
     OtPresentKey k128;
 
-    TRACE_PRESENT("present init %s", ot_present_hexdump(key, 16u));
+    TRACE_PRESENT("present init %s", ot_present_hexdump(ps, key, 16u));
 
     memcpy(&k128.hi, &key[8u], sizeof(uint64_t));
     memcpy(&k128.lo, &key[0u], sizeof(uint64_t));
