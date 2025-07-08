@@ -79,6 +79,7 @@ config OT_KEY_SINK
     bool
 
 config OT_KEYMGR_DPE
+    select OT_KEY_SINK
     select OT_LC_CTRL
     select OT_ROM_CTRL
     bool

@@ -37,48 +37,4 @@ OBJECT_DECLARE_TYPE(OtKeyMgrDpeState, OtKeyMgrDpeClass, OT_KEYMGR_DPE)
 /* Input signal to enable the key manager (from lifecycle controller) */
 #define OT_KEYMGR_DPE_ENABLE TYPE_OT_KEYMGR_DPE "-enable"
 
-/* AES and KMAC Keys have 2 shares of 256 bits */
-#define OT_KEYMGR_DPE_KEY_BYTES (256u / 8u)
-
-typedef struct {
-    uint8_t share0[OT_KEYMGR_DPE_KEY_BYTES];
-    uint8_t share1[OT_KEYMGR_DPE_KEY_BYTES];
-    bool valid;
-} OtKeyMgrDpeKey;
-
-/* OTBN Keys have 2 shares of 384 bits */
-#define OT_KEYMGR_DPE_OTBN_KEY_BYTES (384u / 8u)
-
-typedef struct {
-    uint8_t share0[OT_KEYMGR_DPE_OTBN_KEY_BYTES];
-    uint8_t share1[OT_KEYMGR_DPE_OTBN_KEY_BYTES];
-    bool valid;
-} OtKeyMgrDpeOtbnKey;
-
-struct OtKeyMgrDpeClass {
-    SysBusDeviceClass parent_class;
-    ResettablePhases parent_phases;
-
-    /**
-     * Retrieve output key data for AES sideloading.
-     *
-     * @key pointer to a structure to be filled with key data.
-     */
-    void (*get_aes_key)(const OtKeyMgrDpeState *s, OtKeyMgrDpeKey *key);
-
-    /**
-     * Retrieve output key data for KMAC sideloading.
-     *
-     * @key pointer to a structure to be filled with key data.
-     */
-    void (*get_kmac_key)(const OtKeyMgrDpeState *s, OtKeyMgrDpeKey *key);
-
-    /**
-     * Retrieve output key data for OTBN sideloading.
-     *
-     * @key pointer to a structure to be filled with key data.
-     */
-    void (*get_otbn_key)(const OtKeyMgrDpeState *s, OtKeyMgrDpeOtbnKey *key);
-};
-
 #endif /* HW_OPENTITAN_OT_KEYMGR_DPE_H */
