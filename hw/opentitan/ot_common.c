@@ -369,6 +369,45 @@ int ot_common_parse_hexa_str(uint8_t *out, const char *xstr, size_t olen,
     return (!exact || !xstr[olen * 2u]) ? 0 : 1;
 }
 
+static const char *
+ot_common_hexdump(const uint8_t *buf, size_t size, char *hexstr, bool order,
+                  size_t hexstr_size, const char *hex)
+{
+    if (size > ((hexstr_size / 2u) - 1u)) {
+        size = (hexstr_size / 2u) - 1u;
+    }
+
+    if (!order) {
+        for (unsigned ix = 0u; ix < (unsigned)size; ix++) {
+            hexstr[(ix * 2u)] = hex[(buf[ix] >> 4u) & 0xfu];
+            hexstr[(ix * 2u) + 1u] = hex[buf[ix] & 0xfu];
+        }
+    } else {
+        for (unsigned ix = 0u; ix < (unsigned)size; ix++) {
+            hexstr[(ix * 2u)] = hex[(buf[size - 1u - ix] >> 4u) & 0xfu];
+            hexstr[(ix * 2u) + 1u] = hex[buf[size - 1u - ix] & 0xfu];
+        }
+    }
+
+
+    hexstr[size * 2u] = '\0';
+    return hexstr;
+}
+
+const char *ot_common_uhexdump(const uint8_t *buf, size_t size, bool order,
+                               char *hexstr, size_t hexstr_size)
+{
+    static const char uhex[] = "0123456789ABCDEF";
+    return ot_common_hexdump(buf, size, hexstr, order, hexstr_size, uhex);
+}
+
+const char *ot_common_lhexdump(const uint8_t *buf, size_t size, bool order,
+                               char *hexstr, size_t hexstr_size)
+{
+    static const char lhex[] = "0123456789abcdef";
+    return ot_common_hexdump(buf, size, hexstr, order, hexstr_size, lhex);
+}
+
 /*
  * Unfortunately, there is no QEMU API to properly disable serial control lines
  */

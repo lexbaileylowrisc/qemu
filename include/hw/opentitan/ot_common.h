@@ -313,6 +313,34 @@ int ot_common_string_ends_with(const char *str, const char *suffix);
 int ot_common_parse_hexa_str(uint8_t *out, const char *xstr, size_t olen,
                              bool reverse, bool exact);
 
+/*
+ * Generate a uppercase hex-string representation of a buffer.
+ *
+ * @buf input byte buffer
+ * @size size of the buffer
+ * @order true to print the buffer in reverse order
+ * @hexstr output hex string buffer
+ * @hexstr_size max size of the output hex string buffer
+ *
+ * @return the hex string representation of the buffer
+ */
+const char *ot_common_uhexdump(const uint8_t *buf, size_t size, bool order,
+                               char *hexstr, size_t hexstr_size);
+
+/*
+ * Generate a lowercase hex-string representation of a buffer.
+ *
+ * @buf input byte buffer
+ * @size size of the buffer
+ * @order true to print the buffer in reverse order
+ * @hexstr output hex string buffer
+ * @hexstr_size max size of the output hex string buffer
+ *
+ * @return the hex string representation of the buffer
+ */
+const char *ot_common_lhexdump(const uint8_t *buf, size_t size, bool order,
+                               char *hexstr, size_t hexstr_size);
+
 /* ------------------------------------------------------------------------ */
 /* Configuration utilities */
 /* ------------------------------------------------------------------------ */
