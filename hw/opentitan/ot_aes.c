@@ -258,6 +258,7 @@ struct OtAESState {
     OtAESEDN edn;
     OtPrngState *prng;
     const char *clock_src_name; /* IRQ name once connected */
+    char *hexstr;
     unsigned pclk; /* Current input clock */
     unsigned reseed_count;
     bool fast_mode;
@@ -273,35 +274,23 @@ struct OtAESClass {
 };
 
 #ifdef DEBUG_AES
-static const char *ot_aes_hexdump(OtAESState *s, const uint8_t *buf,
-                                  size_t size)
-{
-    static const char _hex[] = "0123456789ABCDEF";
-    static char hexstr[AES_DEBUG_HEXBUF_SIZE];
-
-    if (size > ((AES_DEBUG_HEXBUF_SIZE / 2u) - 2u)) {
-        size = AES_DEBUG_HEXBUF_SIZE / 2u - 2u;
-    }
-
-    for (unsigned ix = 0u; ix < size; ix++) {
-        hexstr[(ix * 2u)] = _hex[(buf[ix] >> 4u) & 0xfu];
-        hexstr[(ix * 2u) + 1u] = _hex[buf[ix] & 0xfu];
-    }
-    hexstr[size * 2u] = '\0';
-    return hexstr;
-}
-
 #define trace_ot_aes_buf(_s_, _a_, _m_, _b_) \
     trace_ot_aes_buffer((_s_)->ot_id, (_a_), (_m_), \
-                        ot_aes_hexdump(_s_, (const uint8_t *)(_b_), \
-                                       OT_AES_DATA_SIZE))
+                        ot_common_uhexdump((const uint8_t *)(_b_), \
+                                           OT_AES_DATA_SIZE, false, \
+                                           (_s_)->hexstr, \
+                                           AES_DEBUG_HEXBUF_SIZE))
 #define trace_ot_aes_key(_s_, _a_, _b_, _l_) \
     trace_ot_aes_buffer((_s_)->ot_id, (_a_), "key", \
-                        ot_aes_hexdump(_s_, (const uint8_t *)(_b_), (_l_)))
+                        ot_common_uhexdump((const uint8_t *)(_b_), (_l_), \
+                                           false, (_s_)->hexstr, \
+                                           AES_DEBUG_HEXBUF_SIZE))
 #define trace_ot_aes_iv(_s_, _a_, _b_) \
     trace_ot_aes_buffer((_s_)->ot_id, (_a_), "iv", \
-                        ot_aes_hexdump(_s_, (const uint8_t *)(_b_), \
-                                       OT_AES_IV_SIZE))
+                        ot_common_uhexdump((const uint8_t *)(_b_), \
+                                           OT_AES_IV_SIZE, false, \
+                                           (_s_)->hexstr, \
+                                           AES_DEBUG_HEXBUF_SIZE))
 #else
 #define trace_ot_aes_buf(_s_, _a_, _m_, _b_)
 #define trace_ot_aes_key(_s_, _a_, _b_, _l_)
@@ -1432,6 +1421,10 @@ static void ot_aes_init(Object *obj)
 
     s->process_bh = qemu_bh_new(&ot_aes_handle_process, s);
     s->retard_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_aes_handle_process, s);
+
+#ifdef DEBUG_AES
+    s->hexstr = g_new0(char, AES_DEBUG_HEXBUF_SIZE);
+#endif
 }
 
 static void ot_aes_class_init(ObjectClass *klass, void *data)
