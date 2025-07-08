@@ -65,6 +65,7 @@ typedef struct {
 
 #define OT_KMAC_APP_MSG_BYTES    (64u / 8u)
 #define OT_KMAC_APP_DIGEST_BYTES (384u / 8u)
+#define OT_KMAC_KEY_SIZE         (256u / 8u)
 
 typedef struct {
     uint8_t msg_data[OT_KMAC_APP_MSG_BYTES];

@@ -43,7 +43,7 @@
 #include "hw/opentitan/ot_clkmgr.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_edn.h"
-#include "hw/opentitan/ot_keymgr_dpe.h"
+#include "hw/opentitan/ot_key_sink.h"
 #include "hw/opentitan/ot_kmac.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
@@ -305,6 +305,8 @@ static const char *REG_NAMES[REGS_COUNT] = {
 };
 #undef REG_NAME_ENTRY
 
+#define OT_KMAC_KEY_HEXSTR_SIZE (OT_KMAC_KEY_SIZE * 2u + 2u)
+
 /* Input FIFO length is 80 bytes (10 x 64 bits) */
 #define FIFO_LENGTH 80u
 
@@ -377,6 +379,12 @@ typedef struct {
     bool req_pending; /* true if pending request */
 } OtKMACApp;
 
+typedef struct {
+    uint8_t share0[OT_KMAC_KEY_SIZE];
+    uint8_t share1[OT_KMAC_KEY_SIZE];
+    bool valid;
+} OtKMACKey;
+
 struct OtKMACState {
     SysBusDevice parent_obj;
 
@@ -404,6 +412,8 @@ struct OtKMACState {
 
     OtKMACApp *apps;
     OtKMACApp *current_app;
+    OtKMACKey *sl_key;
+    char *hexstr;
     uint32_t pending_apps;
 
     Fifo8 input_fifo;
@@ -413,7 +423,6 @@ struct OtKMACState {
     char *ot_id;
     char *clock_name;
     DeviceState *clock_src;
-    OtKeyMgrDpeState *keymgr;
     OtEDNState *edn;
     uint8_t edn_ep;
     uint8_t num_app;
@@ -564,6 +573,39 @@ static inline size_t ot_kmac_get_key_length(const OtKMACState *s)
     }
 }
 
+static void ot_kmac_push_key(OtKeySinkIf *ifd, const uint8_t *share0,
+                             const uint8_t *share1, size_t key_len, bool valid)
+{
+    g_assert(!key_len || key_len == OT_KMAC_KEY_SIZE);
+
+    OtKMACState *s = OT_KMAC(ifd);
+    OtKMACKey *key = s->sl_key;
+
+    if (key_len && share0) {
+        memcpy(key->share0, share0, key_len);
+    } else {
+        memset(key->share0, 0, OT_KMAC_KEY_SIZE);
+    }
+    if (key_len && share1) {
+        memcpy(key->share1, share1, key_len);
+    } else {
+        memset(key->share1, 0, OT_KMAC_KEY_SIZE);
+    }
+    key->valid = valid;
+
+    if (trace_event_get_state(TRACE_OT_KMAC_PUSH_KEY)) {
+        uint8_t key_value[OT_KMAC_KEY_SIZE];
+        for (unsigned ix = 0u; ix < OT_KMAC_KEY_SIZE; ix++) {
+            key_value[ix] = key->share0[ix] ^ key->share1[ix];
+        }
+
+        trace_ot_kmac_push_key(s->ot_id, valid,
+                               ot_common_lhexdump(key_value, OT_KMAC_KEY_SIZE,
+                                                  true, s->hexstr,
+                                                  OT_KMAC_KEY_HEXSTR_SIZE));
+    }
+}
+
 static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t *keylen)
 {
     uint32_t cfg = ot_shadow_reg_peek(&s->cfg);
@@ -575,15 +617,13 @@ static void ot_kmac_get_key(OtKMACState *s, uint8_t *key, size_t *keylen)
     }
 
     if (sideload) {
-        OtKeyMgrDpeKey keymgr_key;
-        OtKeyMgrDpeClass *kmc = OT_KEYMGR_DPE_GET_CLASS(s->keymgr);
-        kmc->get_kmac_key(s->keymgr, &keymgr_key);
-        *keylen = OT_KEYMGR_DPE_KEY_BYTES;
-        for (size_t ix = 0; ix < *keylen; ix++) {
-            key[ix] = keymgr_key.share0[ix] ^ keymgr_key.share1[ix];
+        *keylen = OT_KMAC_KEY_SIZE;
+        const OtKMACKey *sl_key = s->sl_key;
+        for (size_t ix = 0; ix < OT_KMAC_KEY_SIZE; ix++) {
+            key[ix] = sl_key->share0[ix] ^ sl_key->share1[ix];
         }
         /* only check key validity in App mode */
-        if (s->current_app && !keymgr_key.valid) {
+        if (s->current_app && !sl_key->valid) {
             ot_kmac_report_error(s, OT_KMAC_ERR_KEY_NOT_VALID,
                                  s->current_app->index);
         }
@@ -918,7 +958,7 @@ static void ot_kmac_process_start(OtKMACState *s)
             if (cfg->mode == OT_KMAC_MODE_KMAC) {
                 uint8_t key[NUM_KEY_REGS * sizeof(uint32_t)];
                 size_t keylen = 0;
-                static_assert(OT_KEYMGR_DPE_KEY_BYTES <= ARRAY_SIZE(key),
+                static_assert(OT_KMAC_KEY_SIZE <= ARRAY_SIZE(key),
                               "key buffer too small to hold sideloaded key");
                 ot_kmac_get_key(s, key, &keylen);
                 sha3_process_kmac_key(&s->ltc_state, key, keylen);
@@ -1658,8 +1698,6 @@ static Property ot_kmac_properties[] = {
                      DeviceState *),
     DEFINE_PROP_LINK("edn", OtKMACState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKMACState, edn_ep, UINT8_MAX),
-    DEFINE_PROP_LINK("keymgr", OtKMACState, keymgr, TYPE_OT_KEYMGR_DPE,
-                     OtKeyMgrDpeState *),
     DEFINE_PROP_UINT8("num-app", OtKMACState, num_app, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -1720,6 +1758,8 @@ static void ot_kmac_reset_enter(Object *obj, ResetType type)
     ot_kmac_update_alert(s);
 
     fifo8_reset(&s->input_fifo);
+
+    memset(s->sl_key, 0, sizeof(OtKMACKey));
 
     if (!s->clock_src_name) {
         IbexClockSrcIfClass *ic = IBEX_CLOCK_SRC_IF_GET_CLASS(s->clock_src);
@@ -1802,6 +1842,10 @@ static void ot_kmac_init(Object *obj)
 
     /* FIFO sizes as per OT Spec */
     fifo8_create(&s->input_fifo, FIFO_LENGTH);
+
+    s->sl_key = g_new0(OtKMACKey, 1u);
+
+    s->hexstr = g_new0(char, OT_KMAC_KEY_HEXSTR_SIZE);
 }
 
 static void ot_kmac_class_init(ObjectClass *klass, void *data)
@@ -1820,6 +1864,9 @@ static void ot_kmac_class_init(ObjectClass *klass, void *data)
 
     kc->connect_app = &ot_kmac_connect_app;
     kc->app_request = &ot_kmac_app_request;
+
+    OtKeySinkIfClass *sc = OT_KEY_SINK_IF_CLASS(klass);
+    sc->push_key = &ot_kmac_push_key;
 }
 
 static const TypeInfo ot_kmac_info = {
@@ -1829,6 +1876,11 @@ static const TypeInfo ot_kmac_info = {
     .instance_init = &ot_kmac_init,
     .class_size = sizeof(OtKMACClass),
     .class_init = &ot_kmac_class_init,
+    .interfaces =
+        (InterfaceInfo[]){
+            { TYPE_OT_KEY_SINK_IF },
+            {},
+        },
 };
 
 static void ot_kmac_register_types(void)
