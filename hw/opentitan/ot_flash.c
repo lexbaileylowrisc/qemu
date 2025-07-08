@@ -2237,26 +2237,6 @@ static void ot_flash_csrs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
-#ifdef USE_HEXDUMP
-static char dbg_hexbuf[256];
-static const char *ot_flash_hexdump(const uint8_t *buf, size_t size)
-{
-    static const char _hex[] = "0123456789ABCDEF";
-
-    if (size > ((sizeof(dbg_hexbuf) / 2u) - 2u)) {
-        size = sizeof(dbg_hexbuf) / 2u - 2u;
-    }
-
-    char *hexstr = dbg_hexbuf;
-    for (unsigned int ix = 0; ix < size; ix++) {
-        hexstr[(ix * 2)] = _hex[(buf[ix] >> 4) & 0xf];
-        hexstr[(ix * 2) + 1] = _hex[buf[ix] & 0xf];
-    }
-    hexstr[size * 2] = '\0';
-    return dbg_hexbuf;
-}
-#endif
-
 static void ot_flash_load(OtFlashState *s, Error **errp)
 {
     OtFlashStorage *flash = &s->flash;
