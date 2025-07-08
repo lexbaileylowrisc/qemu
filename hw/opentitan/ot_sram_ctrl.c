@@ -133,6 +133,7 @@ struct OtSramCtrlState {
     bool initializing; /* CTRL.INIT has been requested */
     bool otp_ifetch; /* whether OTP enable execution from this RAM */
     bool csr_ifetch; /* whether CSR enable execution from this RAM */
+    char *hexstr;
 
     char *ot_id;
     OtOTPState *otp_ctrl; /* optional */
@@ -150,28 +151,15 @@ struct OtSramCtrlClass {
 };
 
 #ifdef OT_SRAM_CTRL_DEBUG
+#define OT_SRAM_CTRL_HEXSTR_SIZE 256u
 #define TRACE_SRAM_CTRL(msg, ...) \
     qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
-static char hexbuf[256u];
-static const char *ot_sram_ctrl_hexdump(const void *data, size_t size)
-{
-    static const char _hex[] = "0123456789abcdef";
-    const uint8_t *buf = (const uint8_t *)data;
-
-    if (size > ((sizeof(hexbuf) / 2u) - 2u)) {
-        size = sizeof(hexbuf) / 2u - 2u;
-    }
-
-    char *hexstr = hexbuf;
-    for (size_t ix = 0; ix < size; ix++) {
-        hexstr[(ix * 2u)] = _hex[(buf[ix] >> 4u) & 0xfu];
-        hexstr[(ix * 2u) + 1u] = _hex[buf[ix] & 0xfu];
-    }
-    hexstr[size * 2u] = '\0';
-    return hexbuf;
-}
+#define ot_sram_ctrl_hexdump(_s_, _b_, _l_) \
+    ot_common_lhexdump((const uint8_t *)_b_, _l_, false, (_s_)->hexstr, \
+                       OT_SRAM_CTRL_HEXSTR_SIZE)
 #else
 #define TRACE_SRAM_CTRL(msg, ...)
+#define ot_sram_ctrl_hexdump(_s_, _b_, _l_)
 #endif
 
 static inline unsigned ot_sram_ctrl_get_u64_slot(unsigned idx)
@@ -305,11 +293,11 @@ static void ot_sram_ctrl_reseed(OtSramCtrlState *s)
         oc->get_otp_key(s->otp_ctrl, OTP_KEY_SRAM, s->otp_key);
 
         TRACE_SRAM_CTRL("Scrambing seed:  %s (valid: %u)",
-                        ot_sram_ctrl_hexdump(s->otp_key->seed,
+                        ot_sram_ctrl_hexdump(s, s->otp_key->seed,
                                              s->otp_key->seed_size),
                         s->otp_key->seed_valid);
         TRACE_SRAM_CTRL("Scrambing nonce: %s",
-                        ot_sram_ctrl_hexdump(s->otp_key->nonce,
+                        ot_sram_ctrl_hexdump(s, s->otp_key->nonce,
                                              s->otp_key->nonce_size));
 
         if (s->otp_key->seed_valid) {
@@ -865,6 +853,10 @@ static void ot_sram_ctrl_init(Object *obj)
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_sram_ctrl_init_chunk_fn, s);
     s->prng = ot_prng_allocate();
     s->otp_key = g_new0(OtOTPKey, 1u);
+
+#ifdef OT_SRAM_CTRL_DEBUG
+    s->hexstr = g_new0(char, OT_SRAM_CTRL_HEXSTR_SIZE);
+#endif
 }
 
 static void ot_sram_ctrl_class_init(ObjectClass *klass, void *data)
