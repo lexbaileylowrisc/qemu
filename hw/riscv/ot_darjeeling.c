@@ -624,8 +624,7 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
         ),
         .link = IBEXDEVICELINKDEFS(
             OT_DJ_SOC_DEVLINK("clock-src", CLKMGR),
-            OT_DJ_SOC_DEVLINK("edn", EDN0),
-            OT_DJ_SOC_DEVLINK("keymgr", KEYMGR_DPE)
+            OT_DJ_SOC_DEVLINK("edn", EDN0)
         ),
         .prop = IBEXDEVICEPROPDEFS(
             IBEX_DEV_STRING_PROP("clock-name", "trans.kmac"),
@@ -665,8 +664,10 @@ static const IbexDeviceDef ot_dj_soc_devices[] = {
             OT_DJ_SOC_GPIO_ALERT(1, 64)
         ),
         .link = IBEXDEVICELINKDEFS(
+            OT_DJ_SOC_DEVLINK("aes", AES),
             OT_DJ_SOC_DEVLINK("edn", EDN0),
             OT_DJ_SOC_DEVLINK("kmac", KMAC),
+            OT_DJ_SOC_DEVLINK("otbn", OTBN),
             OT_DJ_SOC_DEVLINK("lc_ctrl", LC_CTRL),
             OT_DJ_SOC_DEVLINK("otp_ctrl", OTP_CTRL),
             OT_DJ_SOC_DEVLINK("rom0", ROM0),

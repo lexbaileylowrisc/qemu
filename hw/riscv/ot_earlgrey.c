@@ -1060,7 +1060,6 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             { .base = 0x41140000u }
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP(OT_COMMON_DEV_ID, "keymgr"),
             IBEX_DEV_UINT_PROP("size", 0x100u),
             IBEX_DEV_UINT_PROP("irq-count", 1u),
             IBEX_DEV_UINT_PROP("alert-count", 2u),
