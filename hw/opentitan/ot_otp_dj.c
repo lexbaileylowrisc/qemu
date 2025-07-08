@@ -820,6 +820,7 @@ struct OtOTPDjState {
     OtOTPStorage *otp;
     OtOTPHWCfg *hw_cfg;
     OtOTPTokens *tokens;
+    char *hexstr;
 
     char *ot_id;
     BlockBackend *blk; /* OTP host backend */
@@ -1077,30 +1078,14 @@ ot_otp_dj_lci_change_state_line(OtOTPDjState *s, OtOTPLCIState state, int line);
                 sizeof(uint32_t) * NUM_DIGEST_WORDS))
 
 #ifdef OT_OTP_DEBUG
+#define OT_OTP_HEXSTR_SIZE  256u
 #define TRACE_OTP(msg, ...) qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
+#define ot_otp_hexdump(_s_, _b_, _l_) \
+    ot_common_lhexdump((const uint8_t *)_b_, _l_, false, (_s_)->hexstr, \
+                       OT_OTP_HEXSTR_SIZE)
 #else
 #define TRACE_OTP(msg, ...)
-#endif
-
-#ifdef OT_OTP_DEBUG
-static char hexbuf[256u];
-static const char *ot_otp_hexdump(const void *data, size_t size)
-{
-    static const char _hex[] = "0123456789abcdef";
-    const uint8_t *buf = (const uint8_t *)data;
-
-    if (size > ((sizeof(hexbuf) / 2u) - 2u)) {
-        size = sizeof(hexbuf) / 2u - 2u;
-    }
-
-    char *hexstr = hexbuf;
-    for (size_t ix = 0; ix < size; ix++) {
-        hexstr[(ix * 2u)] = _hex[(buf[ix] >> 4u) & 0xfu];
-        hexstr[(ix * 2u) + 1u] = _hex[buf[ix] & 0xfu];
-    }
-    hexstr[size * 2u] = '\0';
-    return hexbuf;
-}
+#define ot_otp_hexdump(_s_, _b_, _l_)
 #endif
 
 static void ot_otp_dj_update_irqs(OtOTPDjState *s)
@@ -1842,7 +1827,7 @@ static void ot_otp_dj_check_partition_integrity(OtOTPDjState *s, unsigned ix)
                                      pctrl->buffer.digest);
 
         TRACE_OTP("compute digest of %s: %016llx from %s\n", PART_NAME(ix),
-                  digest, ot_otp_hexdump(pctrl->buffer.data, part_size));
+                  digest, ot_otp_hexdump(s, pctrl->buffer.data, part_size));
 
         pctrl->failed = true;
         /* this is a fatal error */
@@ -2334,7 +2319,7 @@ static void ot_otp_dj_dai_digest(OtOTPDjState *s)
     s->dai->partition = partition;
 
     TRACE_OTP("%s: %s: next digest %016llx from %s\n", __func__, s->ot_id,
-              pctrl->buffer.next_digest, ot_otp_hexdump(data, part_size));
+              pctrl->buffer.next_digest, ot_otp_hexdump(s, data, part_size));
 
     DAI_CHANGE_STATE(s, OTP_DAI_DIG_WAIT);
 
@@ -4031,7 +4016,7 @@ static void ot_otp_dj_configure_inv_default_parts(OtOTPDjState *s)
         }
 
         TRACE_OTP("inv_default_part[%s] %s", PART_NAME(ix),
-                  ot_otp_hexdump(s->inv_default_parts[ix], part->size));
+                  ot_otp_hexdump(s, s->inv_default_parts[ix], part->size));
     }
 }
 
@@ -4285,6 +4270,10 @@ static void ot_otp_dj_init(Object *obj)
 
     int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     ot_prng_reseed(s->keygen->prng, (uint32_t)now);
+
+#ifdef OT_OTP_DEBUG
+    s->hexstr = g_new0(char, OT_OTP_HEXSTR_SIZE);
+#endif
 }
 
 static void ot_otp_dj_class_init(ObjectClass *klass, void *data)
