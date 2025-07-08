@@ -400,6 +400,7 @@ struct OtLcCtrlState {
     bool force_raw; /* survivability mode */
     uint8_t volatile_raw_unlock_bm; /* xslot-indexed bitmap */
     uint8_t state_invalid_error_bm; /* error bitmap */
+    char *hexstr;
 
     /* properties */
     char *ot_id;
@@ -695,31 +696,15 @@ LC_STATES_TPL[NUM_LC_STATE][LC_STATE_WORDS] = {
 #undef B
 
 #ifdef OT_LC_CTRL_DEBUG
+#define OT_LC_CTRL_HEXSTR_SIZE 256u
 #define TRACE_LC_CTRL(msg, ...) \
     qemu_log("%s: " msg "\n", __func__, ##__VA_ARGS__);
+#define ot_lc_ctrl_hexdump(_s_, _b_, _l_) \
+    ot_common_lhexdump((const uint8_t *)_b_, _l_, false, (_s_)->hexstr, \
+                       OT_LC_CTRL_HEXSTR_SIZE)
 #else
 #define TRACE_LC_CTRL(msg, ...)
-#endif
-
-#ifdef OT_LC_CTRL_DEBUG
-static char hexbuf[256u];
-static const char *ot_lc_ctrl_hexdump(const void *data, size_t size)
-{
-    static const char _hex[] = "0123456789abcdef";
-    const uint8_t *buf = (const uint8_t *)data;
-
-    if (size > ((sizeof(hexbuf) / 2u) - 2u)) {
-        size = sizeof(hexbuf) / 2u - 2u;
-    }
-
-    char *hexstr = hexbuf;
-    for (size_t ix = 0; ix < size; ix++) {
-        hexstr[(ix * 2u)] = _hex[(buf[ix] >> 4u) & 0xfu];
-        hexstr[(ix * 2u) + 1u] = _hex[buf[ix] & 0xfu];
-    }
-    hexstr[size * 2u] = '\0';
-    return hexbuf;
-}
+#define ot_lc_ctrl_hexdump(_s_, _b_, _l_)
 #endif
 
 static void ot_lc_ctrl_resume_transition(OtLcCtrlState *s);
@@ -1102,7 +1087,8 @@ static void ot_lc_ctrl_kmac_request(OtLcCtrlState *s)
     stl_le_p(&req.msg_data[0], token[0]);
     stl_le_p(&req.msg_data[sizeof(uint32_t)], token[1]);
 
-    TRACE_LC_CTRL("KMAC input: %s", ot_lc_ctrl_hexdump(&req.msg_data[0], 8u));
+    TRACE_LC_CTRL("KMAC input: %s",
+                  ot_lc_ctrl_hexdump(s, &req.msg_data[0], 8u));
 
     OtKMACClass *kc = OT_KMAC_GET_CLASS(s->kmac);
     kc->app_request(s->kmac, s->kmac_app, &req);
@@ -1133,7 +1119,7 @@ static void ot_lc_ctrl_kmac_handle_resp(void *opaque, const OtKMACAppRsp *rsp)
     s->hash_token.hi = dig0 ^ dig1;
 
     TRACE_LC_CTRL("MKAC output: %s",
-                  ot_lc_ctrl_hexdump(&s->hash_token.lo, 16u));
+                  ot_lc_ctrl_hexdump(s, &s->hash_token.lo, 16u));
 
     ot_lc_ctrl_resume_transition(s);
 }
@@ -1235,14 +1221,14 @@ static void ot_lc_ctrl_load_otp_hw_cfg(OtLcCtrlState *s)
     int socdbg_ix = OT_SOCDBG_ST_PROD;
 
     TRACE_LC_CTRL("soc_dbg_state: %s",
-                  ot_lc_ctrl_hexdump(hw_cfg->soc_dbg_state,
+                  ot_lc_ctrl_hexdump(s, hw_cfg->soc_dbg_state,
                                      sizeof(OtLcCtrlSocDbgValue)));
 
     for (unsigned six = 0; six < OT_SOCDBG_ST_COUNT; six++) {
         bool match = !memcmp(hw_cfg->soc_dbg_state, s->socdbgs[six],
                              sizeof(OtLcCtrlSocDbgValue));
         TRACE_LC_CTRL("soc_dbg ref[%u]: %s, match: %u", six,
-                      ot_lc_ctrl_hexdump(s->socdbgs[six],
+                      ot_lc_ctrl_hexdump(s, s->socdbgs[six],
                                          sizeof(OtLcCtrlSocDbgValue)),
                       match);
         if (match) {
@@ -2343,6 +2329,10 @@ static void ot_lc_ctrl_init(Object *obj)
 
     s->pwc_lc_bh = qemu_bh_new(&ot_lc_ctrl_pwr_lc_bh, s);
     s->escalate_bh = qemu_bh_new(&ot_lc_ctrl_escalate_bh, s);
+
+#ifdef OT_LC_CTRL_DEBUG
+    s->hexstr = g_new0(char, OT_LC_CTRL_HEXSTR_SIZE);
+#endif
 }
 
 static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
