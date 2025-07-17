@@ -295,6 +295,7 @@ ot_keymgr_dpe_sideload_clear(const char *id, const char *sc, unsigned nsc) "%s: 
 # ot_kmac.c
 
 ot_kmac_app_finished(const char *id, unsigned app_idx) "%s: #%u"
+ot_kmac_app_request(const char *id, unsigned app_idx, bool last, size_t msg_len, const char *hexstr) "%s: #%u last:%u msg_len:%zu msg_data:%s"
 ot_kmac_app_start(const char *id, unsigned app_idx) "%s: #%u"
 ot_kmac_change_state_app(const char *id, unsigned app_idx, int line, const char *old, int nold, const char *new, int nnew) "%s: #%u @ %d [%s:%d] -> [%s:%d]"
 ot_kmac_change_state_sw(const char *id, int line, const char *old, int nold, const char *new, int nnew) "%s: @ %d [%s:%d] -> [%s:%d]"

@@ -1667,6 +1667,16 @@ static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
                                 const OtKMACAppReq *req)
 {
     g_assert(app_idx < s->num_app);
+    g_assert(req);
+    g_assert(req->msg_len <= OT_KMAC_APP_MSG_BYTES);
+
+    if (trace_event_get_state(TRACE_OT_KMAC_APP_REQUEST)) {
+        trace_ot_kmac_app_request(s->ot_id, app_idx, req->last, req->msg_len,
+                                  ot_common_lhexdump(req->msg_data,
+                                                     req->msg_len, false,
+                                                     s->hexstr,
+                                                     OT_KMAC_KEY_HEXSTR_SIZE));
+    }
 
     OtKMACApp *app = &s->apps[app_idx];
 
