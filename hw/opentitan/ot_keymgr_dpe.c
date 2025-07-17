@@ -1025,7 +1025,7 @@ static size_t ot_keymgr_dpe_kdf_append_rom_digest(
     ot_keymgr_dpe_kdf_push_bytes(s, rom_digest, OT_ROM_DIGEST_BYTES);
     *dvalid &= ot_keymgr_dpe_valid_data_check(rom_digest, OT_ROM_DIGEST_BYTES);
     TRACE_KEYMGR_DPE(s, "ROM%u digest: %s", rom_idx,
-                     ot_keymgr_dpe_dump_bigint(s, &rom_digest[rom_idx],
+                     ot_keymgr_dpe_dump_bigint(s, rom_digest,
                                                OT_ROM_DIGEST_BYTES));
 
     return OT_ROM_DIGEST_BYTES;
