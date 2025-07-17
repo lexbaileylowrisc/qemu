@@ -74,6 +74,10 @@ class HexInt(int):
         return HexInt(int(value.strip(), value.startswith('0x') and 16 or 10))
 
 
+class ArgError(Exception):
+    """Argument error."""
+
+
 class EasyDict(dict):
     """Dictionary whose members can be accessed as instance members
     """
