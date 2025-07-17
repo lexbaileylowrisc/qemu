@@ -18,7 +18,7 @@ from typing import Any, Optional
 import re
 
 from ot.util.elf import ElfBlob
-from ot.util.file import guess_test_type
+from ot.util.file import guess_file_type
 
 
 class QEMUFileManager:
@@ -206,7 +206,7 @@ class QEMUFileManager:
             for xpath, xhdlr in xfiles:
                 if not xpath:
                     continue
-                xtype = guess_test_type(xpath)
+                xtype = guess_file_type(xpath)
                 xstore = getattr(gen, f'store_{xhdlr}')
                 xname = basename(xpath)
                 if xtype == 'elf':

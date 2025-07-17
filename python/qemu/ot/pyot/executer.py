@@ -21,7 +21,7 @@ from typing import Any, Iterator, Optional
 import re
 import sys
 
-from ot.util.file import guess_test_type
+from ot.util.file import guess_file_type
 from ot.util.log import flush_memory_loggers
 from ot.util.misc import EasyDict
 
@@ -110,7 +110,7 @@ class QEMUExecuter:
         """
         self._argdict = dict(self._args.__dict__)
         for tst in sorted(self._build_test_list()):
-            ttype = guess_test_type(tst)
+            ttype = guess_file_type(tst)
             yield f'{basename(tst)} ({ttype})'
 
     def run(self, debug: bool, allow_no_test: bool) -> int:
@@ -328,7 +328,7 @@ class QEMUExecuter:
             exec_path = self._virtual_tests.get(args.exec)
             if not exec_path:
                 exec_path = self.abspath(args.exec)
-            xtype = guess_test_type(exec_path)
+            xtype = guess_file_type(exec_path)
             if xtype == 'spiflash':
                 fw_args.extend(('-drive',
                                 f'if=mtd,id=spiflash,bus=0,format=raw,'

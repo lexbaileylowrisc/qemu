@@ -17,8 +17,10 @@ from .elf import ElfBlob
 from .recfmt import RecordSegment, VMemBuilder
 
 
-def guess_test_type(file_path: str) -> str:
-    """Guess a test file type from its contents.
+def guess_file_type(file: Union[str, BufferedReader]) -> str:
+    """Guess a file type from its contents.
+
+       Only supports useful type for QEMU/OT needs.
 
        :return: identified content
     """
