@@ -115,8 +115,7 @@ Fuse RAW images only use the v1 type.
 
 * `-E` use ECC data to fix recoverable errors
 
-* `-e` specify how many bits are used in the VMEM file to store ECC information. Note that ECC
-  information is not stored in the QEMU RAW file for now.
+* `-e` specify how many bits are used in the VMEM file to store ECC information.
 
 * `-F` may be used to rebuild the ECC values for all slots that have been modified using any
   modification operation, and any detected error.

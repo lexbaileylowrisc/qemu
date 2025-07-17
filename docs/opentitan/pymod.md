@@ -8,12 +8,20 @@ using a TCP socket).
 * `python/qemu/ot`: OpenTitan tools
   * `dtm`: Debug Transport Module support,
   * `dm`: RISC-V Debug Module support,
+  * `eflash`: Embedded Flash support,
+  * `gpio`: GPIO support,
+  * `km`: Key Manager support,
   * `lc_ctrl`: [Life Cycle controller](lc_ctrl_dmi.md) over JTAG/DMI support,
   * `mailbox`: support for accessing the responder and the requester sides of the DOE mailbox. Also
-    support the [JTAG mailbox](jtagmbx.md) for accessing the mailbox from a JTAG/DMI link.
+    support the [JTAG mailbox](jtagmbx.md) for accessing the mailbox from a JTAG/DMI link,
   * `otp`: support for parsing and verifing OTP VMEM images, as well as generating and decoding QEMU
-    RAW image files.
-  * `util`: miscellaneous utililies such as ELF format tools and logging utilities
+    RAW image files,
+  * `pyot`: implements the Python OpenTitan test orchestrator tool,
+  * `rom`: support for parsing and verifying ROM images,
+  * `socdbg`: support for communication with the SoC debug module of DMI,
+  * `spi`: support SPI device communication, _i.e._ acts as a SPI master connected to QEMU SPI
+     device port,
+  * `util`: miscellaneous utililies such as ELF format tools and logging utilities,
   * `devproxy`: implementation of the communication channel with the QEMU devproxy device.
 
 Please check the [Python tools](tools.md) documentation for details and scripts that rely
