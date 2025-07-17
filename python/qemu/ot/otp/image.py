@@ -395,6 +395,15 @@ class OtpImage:
         """
         self._change_bits(bitdefs, None)
 
+    def get_partition(self, partition: Union[int, str]) -> OtpPartition:
+        """Retrieve a partition.
+
+           :param partition: the partition to retrieve, either specified as an
+                             index or as the partition name
+           :return: the partition object
+        """
+        return self._retrieve_partition(partition)[1]
+
     def empty_partition(self, partition: Union[int, str]) -> None:
         """Empty the whole content of a partition, including its digest if any,
            and its ECC bits if any.
@@ -408,6 +417,16 @@ class OtpImage:
             raise RuntimeError(f"Unable to empty partition '{partition}'")
         start, end = self._reload(partix, False)
         self._ecc[start // 2:end // 2] = bytes((end-start) // 2)
+
+    def get_field(self, partition: Union[int, str], field: str) -> bytes:
+        """Get the content of a field within a partition.
+
+           :param partition: the name or the index of the partition to erase
+           :param field: the name of the field to erase
+           :return: the content of the field as bytes
+        """
+        part = self._retrieve_partition(partition)[1]
+        return part.get_field(field)
 
     def change_field(self, partition: Union[int, str], field: str,
                      value: Union[bytes, bytearray, bool, int, str]) -> None:

@@ -291,6 +291,26 @@ class OtpPartition:
         self._data = b''.join((self._data[:prop.offset], value,
                                self._data[prop.end:]))
 
+    def decode_field(self, field: str) -> None:
+        """Decode the content of a field.
+
+           :param field: the name of the field to decode
+           :param value: the value to decode
+        """
+        if not self._decoder:
+            return None
+        val = self.get_field(field)
+        sval = hexlify(bytes(reversed(val)))
+        return self._decoder.decode(field, sval).upper()
+
+    def get_field(self, field: str) -> bytes:
+        """Retrieve the content of a field.
+
+           :param field: the name of the field to retrieve
+        """
+        prop = self._retrieve_properties(field)
+        return self._data[prop.offset:prop.end]
+
     def erase_field(self, field: str) -> None:
         """Erase (reset) the content of a field.
 
