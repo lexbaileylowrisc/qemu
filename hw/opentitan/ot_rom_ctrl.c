@@ -116,6 +116,8 @@ static const char *REG_NAMES[REGS_COUNT] = {
 
 #define ROM_DIGEST_WORDS (OT_ROM_DIGEST_BYTES / sizeof(uint32_t))
 
+#define OT_ROM_CTRL_HEXSTR_SIZE (OT_ROM_DIGEST_BYTES * 2u + 2u)
+
 /* clang-format off */
 static const uint8_t SBOX4[16u] = {
     12u, 5u, 6u, 11u, 9u, 0u, 10u, 13u, 3u, 14u, 15u, 8u, 4u, 7u, 1u, 2u
@@ -149,6 +151,7 @@ struct OtRomCtrlState {
     uint64_t *se_buffer;
     unsigned recovered_error_count;
     unsigned unrecoverable_error_count;
+    char *hexstr;
     bool first_reset;
     bool loaded;
     bool scrambled_n_ecc;
@@ -388,6 +391,16 @@ ot_rom_ctrl_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
         if (!s->scrambled_n_ecc) {
             s->regs[R_EXP_DIGEST_0 + ix] = s->regs[R_DIGEST_0 + ix];
         }
+    }
+
+    if (trace_event_get_state(TRACE_OT_ROM_CTRL_COMPUTED_DIGEST)) {
+        uint8_t digest[OT_ROM_DIGEST_BYTES];
+        for (unsigned ix = 0; ix < OT_ROM_DIGEST_BYTES; ix++) {
+            digest[ix] = rsp->digest_share0[ix] ^ rsp->digest_share1[ix];
+        }
+        trace_ot_rom_ctrl_computed_digest(
+            s->ot_id, ot_common_lhexdump(digest, OT_ROM_DIGEST_BYTES, true,
+                                         s->hexstr, OT_ROM_CTRL_HEXSTR_SIZE));
     }
 
     trace_ot_rom_ctrl_digest_mode(s->ot_id, "stored");
@@ -1196,6 +1209,8 @@ static void ot_rom_ctrl_init(Object *obj)
 
     object_property_add_bool(obj, "load", NULL, &ot_rom_ctrl_set_load);
     object_property_set_description(obj, "load", "Trigger initial ROM loading");
+
+    s->hexstr = g_new0(char, OT_ROM_CTRL_HEXSTR_SIZE);
 }
 
 static void ot_rom_ctrl_class_init(ObjectClass *klass, void *data)
