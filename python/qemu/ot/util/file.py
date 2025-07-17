@@ -6,6 +6,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
+from io import BufferedReader
 from os import stat
 from os.path import relpath
 from time import localtime, strftime
@@ -24,8 +25,13 @@ def guess_file_type(file: Union[str, BufferedReader]) -> str:
 
        :return: identified content
     """
-    with open(file_path, 'rb') as bfp:
-        header = bfp.read(1024)
+    if isinstance(file, str):
+        with open(file, 'rb') as bfp:
+            header = bfp.read(1024)
+    elif isinstance(file, BufferedReader):
+        header = file.peek(1024)
+    else:
+        raise TypeError('file must be a string or a binary file object')
     if header[:4] == b'\x7fELF':
         return 'elf'
     if header[:4] == b'OTPT':
@@ -36,6 +42,16 @@ def guess_file_type(file: Union[str, BufferedReader]) -> str:
             continue
         if re.match(vmem_re, line):
             return 'vmem'
+    hex_re = rb'(?i)^[0-9A-F]{6,}'
+    count = 0
+    for line in header.split(b'\n'):
+        if re.match(hex_re, line) and (len(line) & 1) == 0:
+            count += 1
+        else:
+            count = 0
+            break
+        if count > 4:
+            return 'hex'
     return 'bin'
 
 
