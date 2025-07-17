@@ -145,11 +145,13 @@ struct OtRomCtrlState {
     unsigned data_nonce_width; /* bit count */
     unsigned se_pos;
     unsigned se_last_pos;
+    unsigned se_word_bytes;
     uint64_t *se_buffer;
     unsigned recovered_error_count;
     unsigned unrecoverable_error_count;
     bool first_reset;
     bool loaded;
+    bool scrambled_n_ecc;
 
     char *ot_id;
     uint32_t size;
@@ -315,13 +317,15 @@ static void ot_rom_ctrl_send_kmac_req(OtRomCtrlState *s)
     fifo8_reset(&s->hash_fifo);
 
     while (!fifo8_is_full(&s->hash_fifo) && (s->se_pos < s->se_last_pos)) {
-        unsigned word_pos = s->se_pos / OT_ROM_CTRL_WORD_BYTES;
-        unsigned word_off = s->se_pos % OT_ROM_CTRL_WORD_BYTES;
-        unsigned phy_addr = ot_rom_ctrl_addr_sp_enc(s, word_pos);
+        unsigned word_pos = s->se_pos / s->se_word_bytes;
+        unsigned word_off = s->se_pos % s->se_word_bytes;
+        unsigned phy_addr =
+            s->scrambled_n_ecc ? ot_rom_ctrl_addr_sp_enc(s, word_pos) :
+                                 word_pos;
         uint8_t wbuf[sizeof(uint64_t)];
         stq_le_p(wbuf, s->se_buffer[phy_addr]);
         uint8_t *wb = wbuf;
-        unsigned wl = OT_ROM_CTRL_WORD_BYTES;
+        unsigned wl = s->se_word_bytes;
         wb += word_off;
         wl -= word_off;
         wl = MIN(wl, fifo8_num_free(&s->hash_fifo));
@@ -356,9 +360,10 @@ ot_rom_ctrl_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
         return;
     }
 
-    g_assert(s->se_buffer);
-    qemu_vfree(s->se_buffer);
-    s->se_buffer = NULL;
+    if (s->scrambled_n_ecc) {
+        qemu_vfree(s->se_buffer);
+        s->se_buffer = NULL;
+    }
 
     g_assert(s->se_pos == s->se_last_pos);
 
@@ -380,25 +385,15 @@ ot_rom_ctrl_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
         memcpy(&share1, &rsp->digest_share1[ix * sizeof(uint32_t)],
                sizeof(uint32_t));
         s->regs[R_DIGEST_0 + ix] = share0 ^ share1;
+        if (!s->scrambled_n_ecc) {
+            s->regs[R_EXP_DIGEST_0 + ix] = s->regs[R_DIGEST_0 + ix];
+        }
     }
 
     trace_ot_rom_ctrl_digest_mode(s->ot_id, "stored");
 
     /* compare digests and send notification */
     ot_rom_ctrl_compare_and_notify(s);
-}
-
-static void ot_rom_ctrl_fake_digest(OtRomCtrlState *s)
-{
-    /* initialize a all-zero fake digest */
-    for (unsigned ix = 0; ix < ROM_DIGEST_WORDS; ix++) {
-        s->regs[R_EXP_DIGEST_0 + ix] = s->regs[R_DIGEST_0 + ix] = 0;
-    }
-
-    /* switch to ROMD mode */
-    memory_region_rom_device_set_romd(&s->mem, true);
-
-    trace_ot_rom_ctrl_digest_mode(s->ot_id, "fake");
 }
 
 static uint64_t
@@ -525,20 +520,40 @@ static void ot_rom_ctrl_unscramble(OtRomCtrlState *s, const uint64_t *src,
     }
 }
 
-static bool ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
+static void ot_rom_ctrl_spawn_hash_calculation(
+    OtRomCtrlState *s, uintptr_t baseptr, bool scrambled_n_ecc)
+{
+    g_assert(baseptr % sizeof(uint64_t) == 0);
+
+    s->scrambled_n_ecc = scrambled_n_ecc;
+    s->se_buffer = (uint64_t *)baseptr;
+    unsigned word_count = (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
+    if (scrambled_n_ecc) {
+        s->se_word_bytes = OT_ROM_CTRL_WORD_BYTES;
+        s->se_last_pos = word_count * OT_ROM_CTRL_WORD_BYTES;
+    } else {
+        s->se_word_bytes = sizeof(uint64_t);
+        s->se_last_pos = word_count * sizeof(uint32_t);
+    }
+    s->se_pos = 0;
+    ot_rom_ctrl_send_kmac_req(s);
+}
+
+static void ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
 {
     AddressSpace *as = ot_common_get_local_address_space(DEVICE(s));
     hwaddr minaddr;
     hwaddr maxaddr;
     ot_rom_ctrl_get_mem_bounds(s, &minaddr, &maxaddr);
     uint64_t loaddr;
+
     if (load_elf_ram_sym_nosz(ri->filename, NULL, NULL, NULL, NULL, &loaddr,
                               NULL, NULL, 0, EM_RISCV, 1, 0, as, false,
                               &ot_rom_ctrl_rust_demangle_fn, true) <= 0) {
         error_setg(&error_fatal,
                    "ot_rom_ctrl: %s: ROM image '%s', ELF loading failed",
                    s->ot_id, ri->filename);
-        return false;
+        return;
     }
     if ((loaddr < minaddr) || (loaddr > maxaddr)) {
         /* cannot test upper load address as QEMU loader returns VMA, not LMA */
@@ -546,15 +561,16 @@ static bool ot_rom_ctrl_load_elf(OtRomCtrlState *s, const OtRomImg *ri)
                    s->ot_id);
     }
 
-    return false;
+    uintptr_t hostptr = (uintptr_t)memory_region_get_ram_ptr(&s->mem);
+    ot_rom_ctrl_spawn_hash_calculation(s, hostptr, false);
 }
 
-static bool ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
+static void ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
 {
     if (ri->raw_size > s->size) {
         error_setg(&error_fatal, "%s: %s: cannot fit into ROM", __func__,
                    s->ot_id);
-        return false;
+        return;
     }
 
     /* NOLINTNEXTLINE(misc-redundant-expression) */
@@ -562,7 +578,7 @@ static bool ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
     if (fd == -1) {
         error_setg(&error_fatal, "%s: %s: could not open ROM '%s': %s",
                    __func__, s->ot_id, ri->filename, strerror(errno));
-        return false;
+        return;
     }
 
     uint8_t *data = g_malloc0(ri->raw_size);
@@ -574,7 +590,7 @@ static bool ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
         error_setg(&error_fatal,
                    "%s: %s: file %s: read error: rc=%zd (expected %u)",
                    __func__, s->ot_id, ri->filename, rc, ri->raw_size);
-        return false;
+        return;
     }
 
     uintptr_t hostptr = (uintptr_t)memory_region_get_ram_ptr(&s->mem);
@@ -583,7 +599,7 @@ static bool ot_rom_ctrl_load_binary(OtRomCtrlState *s, const OtRomImg *ri)
 
     memory_region_set_dirty(&s->mem, 0, ri->raw_size);
 
-    return false;
+    ot_rom_ctrl_spawn_hash_calculation(s, hostptr, false);
 }
 
 static char *ot_rom_ctrl_read_text_file(OtRomCtrlState *s, const OtRomImg *ri)
@@ -618,12 +634,12 @@ static char *ot_rom_ctrl_read_text_file(OtRomCtrlState *s, const OtRomImg *ri)
     return buffer;
 }
 
-static bool ot_rom_ctrl_load_vmem(OtRomCtrlState *s, const OtRomImg *ri,
+static void ot_rom_ctrl_load_vmem(OtRomCtrlState *s, const OtRomImg *ri,
                                   bool scrambled_n_ecc)
 {
     char *buffer = ot_rom_ctrl_read_text_file(s, ri);
     if (!buffer) {
-        return false;
+        return;
     }
 
     uintptr_t baseptr;
@@ -670,7 +686,7 @@ static bool ot_rom_ctrl_load_vmem(OtRomCtrlState *s, const OtRomImg *ri,
             error_setg(&error_fatal,
                        "%s: %s: address discrepancy in VMEM file '%s'",
                        __func__, s->ot_id, ri->filename);
-            return false;
+            return;
         }
         if (blk_addr != exp_addr) {
             /* each block contains 32-bit of data */
@@ -687,7 +703,7 @@ static bool ot_rom_ctrl_load_vmem(OtRomCtrlState *s, const OtRomImg *ri,
             g_free(buffer);
             error_setg(&error_fatal, "%s: %s: VMEM file '%s' too large",
                        __func__, s->ot_id, ri->filename);
-            return false;
+            return;
         }
 
         for (unsigned blk = 0; blk < blk_count; blk++) {
@@ -718,26 +734,15 @@ static bool ot_rom_ctrl_load_vmem(OtRomCtrlState *s, const OtRomImg *ri,
 
         memory_region_set_dirty(&s->mem, 0, memptr - baseptr);
 
-        if (scrambled_n_ecc) {
-            /* spawn hash calculation */
-            s->se_buffer = (uint64_t *)baseptr;
-            unsigned word_count =
-                (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
-            s->se_last_pos = word_count * OT_ROM_CTRL_WORD_BYTES;
-            s->se_pos = 0;
-            ot_rom_ctrl_send_kmac_req(s);
-            return true;
-        }
+        ot_rom_ctrl_spawn_hash_calculation(s, baseptr, scrambled_n_ecc);
     }
-
-    return false;
 }
 
-static bool ot_rom_ctrl_load_hex(OtRomCtrlState *s, const OtRomImg *ri)
+static void ot_rom_ctrl_load_hex(OtRomCtrlState *s, const OtRomImg *ri)
 {
     char *buffer = ot_rom_ctrl_read_text_file(s, ri);
     if (!buffer) {
-        return false;
+        return;
     }
 
     /*
@@ -766,7 +771,7 @@ static bool ot_rom_ctrl_load_hex(OtRomCtrlState *s, const OtRomImg *ri)
             g_free(buffer);
             error_setg(&error_fatal, "%s: %s: HEX file '%s' too large",
                        __func__, s->ot_id, ri->filename);
-            return false;
+            return;
         }
 
         char *end;
@@ -775,7 +780,7 @@ static bool ot_rom_ctrl_load_hex(OtRomCtrlState *s, const OtRomImg *ri)
             g_free(buffer);
             error_setg(&error_fatal, "%s: %s: invalid line in HEX file '%s'",
                        __func__, s->ot_id, ri->filename);
-            return false;
+            return;
         }
         stq_le_p((void *)memptr, value);
         memptr += sizeof(uint64_t);
@@ -795,23 +800,14 @@ static bool ot_rom_ctrl_load_hex(OtRomCtrlState *s, const OtRomImg *ri)
             error_setg(&error_fatal,
                        "%s: %s: incomplete HEX file '%s': %u bytes", __func__,
                        s->ot_id, ri->filename, loaded_size / 2u);
-            return false;
+            return;
         }
 
-        /* spawn hash calculation */
-        s->se_buffer = (uint64_t *)baseptr;
-        unsigned word_count =
-            (s->size - OT_ROM_DIGEST_BYTES) / sizeof(uint32_t);
-        s->se_last_pos = word_count * OT_ROM_CTRL_WORD_BYTES;
-        s->se_pos = 0;
-        ot_rom_ctrl_send_kmac_req(s);
-        return true;
+        ot_rom_ctrl_spawn_hash_calculation(s, baseptr, true);
     }
-
-    return false;
 }
 
-static bool ot_rom_ctrl_load_rom(OtRomCtrlState *s)
+static void ot_rom_ctrl_load_rom(OtRomCtrlState *s)
 {
     Object *obj = NULL;
     OtRomImg *rom_img = NULL;
@@ -820,50 +816,48 @@ static bool ot_rom_ctrl_load_rom(OtRomCtrlState *s)
     obj = object_resolve_path_component(object_get_objects_root(), s->ot_id);
     if (!obj) {
         trace_ot_rom_ctrl_load_rom_no_image(s->ot_id);
-        return false;
+        uintptr_t hostptr = (uintptr_t)memory_region_get_ram_ptr(&s->mem);
+        ot_rom_ctrl_spawn_hash_calculation(s, hostptr, false);
+        return;
     }
     rom_img = (OtRomImg *)object_dynamic_cast(obj, TYPE_OT_ROM_IMG);
     if (!rom_img) {
         error_setg(&error_fatal, "%s: %s: Object is not a ROM Image", __func__,
                    s->ot_id);
-        return false;
+        return;
     }
 
     const char *basename = strrchr(rom_img->filename, '/');
     basename = basename ? basename + 1 : rom_img->filename;
 
-    bool dig;
     switch (rom_img->format) {
     case OT_ROM_IMG_FORMAT_VMEM_PLAIN:
         trace_ot_rom_ctrl_image_identify(s->ot_id, basename, "plain VMEM");
-        dig = ot_rom_ctrl_load_vmem(s, rom_img, false);
+        ot_rom_ctrl_load_vmem(s, rom_img, false);
         break;
     case OT_ROM_IMG_FORMAT_VMEM_SCRAMBLED_ECC:
         trace_ot_rom_ctrl_image_identify(s->ot_id, basename,
                                          "scrambled VMEM w/ ECC");
-        dig = ot_rom_ctrl_load_vmem(s, rom_img, true);
+        ot_rom_ctrl_load_vmem(s, rom_img, true);
         break;
     case OT_ROM_IMG_FORMAT_HEX_SCRAMBLED_ECC:
         trace_ot_rom_ctrl_image_identify(s->ot_id, basename,
                                          "scrambled HEX w/ ECC");
-        dig = ot_rom_ctrl_load_hex(s, rom_img);
+        ot_rom_ctrl_load_hex(s, rom_img);
         break;
     case OT_ROM_IMG_FORMAT_ELF:
         trace_ot_rom_ctrl_image_identify(s->ot_id, basename, "ELF32");
-        dig = ot_rom_ctrl_load_elf(s, rom_img);
+        ot_rom_ctrl_load_elf(s, rom_img);
         break;
     case OT_ROM_IMG_FORMAT_BINARY:
         trace_ot_rom_ctrl_image_identify(s->ot_id, basename, "Binary");
-        dig = ot_rom_ctrl_load_binary(s, rom_img);
+        ot_rom_ctrl_load_binary(s, rom_img);
         break;
     case OT_ROM_IMG_FORMAT_NONE:
     default:
         error_setg(&error_fatal, "%s: %s: unable to read binary file '%s'",
                    __func__, s->ot_id, rom_img->filename);
-        dig = false;
     }
-
-    return dig;
 }
 
 static uint64_t ot_rom_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
@@ -1116,24 +1110,14 @@ static void ot_rom_ctrl_set_load(Object *obj, bool value, Error **errp)
     if (!s->loaded) {
         s->loaded = true;
 
-        bool notify = true;
-
         /* on initial reset, load ROM then set it read-only */
         if (s->first_reset) {
             /* load ROM from file */
-            bool dig = ot_rom_ctrl_load_rom(s);
+            ot_rom_ctrl_load_rom(s);
 
             /* ensure ROM can no longer be written */
             s->first_reset = false;
-
-            if (!dig) {
-                ot_rom_ctrl_fake_digest(s);
-            }
-
-            notify = !dig;
-        }
-
-        if (notify) {
+        } else {
             /* compare existing digests and send notification to pwrmgr */
             ot_rom_ctrl_compare_and_notify(s);
         }
