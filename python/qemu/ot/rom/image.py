@@ -19,8 +19,13 @@ from ..util.prince import PrinceCipher
 _CRYPTO_EXC: Optional[Exception] = None
 try:
     from Crypto.Hash import cSHAKE256
-except ModuleNotFoundError as exc:
-    _CRYPTO_EXC = exc
+except ModuleNotFoundError:
+    try:
+        # see pip3 install -r requirements.txt
+        from Cryptodome.Hash import cSHAKE256
+    except ModuleNotFoundError as exc:
+        _CRYPTO_EXC = exc
+
 
 class ROMImage:
     """

@@ -47,6 +47,8 @@ of options and the available features.
 * [`gpiodev.py`](gpiodev.md) is a tiny script to run regression tests with GPIO device.
 * `mbbdef.py` is a simple Python tool to extract multi-bit bool definition from OpenTitan' HJSON
   configuration file
+* [`keymgre-dpe.py`](keymgre-dpe.md) is a simple Python tool to generate KeyManager DPE output keys
+  using the same parameters as the KeyManager DPE. It is dedicated to unit test purposes.
 * `ot-format.sh` is a simple shell wrapper to run clang-format (code formatter) on OpenTitan files
 * `ot-tidy.sh` is a simple shell wrapper to run clang-tidy (C linter) on OpenTitan files
 * `present.py` implements the Present 128-bit scrambler/descrambler used in OTP image files for
