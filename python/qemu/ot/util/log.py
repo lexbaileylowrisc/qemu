@@ -32,6 +32,9 @@ _LEVELS = {k: v for k, v in getLevelNamesMapping().items()
            if k not in ('NOTSET', 'WARN')}
 
 
+FileHandler = logging.FileHandler
+
+
 class Color(NamedTuple):
     """Simple color wrapper."""
     color: str
@@ -301,6 +304,7 @@ def configure_loggers(level: int, *lognames: list[Union[str, int, Color]],
                 lnames = [lnames]
             loglevels[lvl] = tuple(lnames)
     quiet = kwargs.pop('quiet', False)
+    filelog = kwargs.pop('filelog', None)
     udplog = kwargs.pop('udplog', None)
     formatter = ColorLogFormatter(**kwargs)
     if udplog is not None:
@@ -311,6 +315,11 @@ def configure_loggers(level: int, *lognames: list[Union[str, int, Color]],
         shandler = DatagramHandler('127.0.0.1', udpport)
     else:
         shandler = logging.StreamHandler(stderr)
+    if filelog:
+        logfh = FileHandler(filelog, 'w')
+        logfh.setFormatter(formatter)
+    else:
+        logfh = None
     shandler.setFormatter(formatter)
     if quiet:
         logh = MemoryHandler(100000, target=shandler, flushOnClose=False)
@@ -342,6 +351,8 @@ def configure_loggers(level: int, *lognames: list[Union[str, int, Color]],
     for _, log in logdefs:
         if not log.hasHandlers():
             log.addHandler(logh)
+            if logfh:
+                log.addHandler(logfh)
     return loggers
 
 

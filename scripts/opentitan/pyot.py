@@ -67,13 +67,13 @@ def main():
         qvm = argparser.add_argument_group(title='Virtual machine')
         rel_qemu_path = relpath(qemu_path) if qemu_path else '?'
         qvm.add_argument('-A', '--asan', action='store_const', const=True,
-                         help='Redirect address sanitizer error log stream')
+                         help='redirect address sanitizer error log stream')
         qvm.add_argument('-D', '--start-delay', type=float, metavar='DELAY',
                          help='QEMU start up delay before initial comm')
         qvm.add_argument('-i', '--icount',
                          help='virtual instruction counter with 2^ICOUNT clock '
                               'ticks per inst. or \'auto\'')
-        qvm.add_argument('-L', '--log_file',
+        qvm.add_argument('-L', '--qemu-log', metavar='FILE',
                          help='log file for trace and log messages')
         qvm.add_argument('-M', '--variant',
                          help='machine variant (machine specific)')
@@ -82,7 +82,7 @@ def main():
         qvm.add_argument('-m', '--machine',
                          help=f'virtual machine (default to {DEFAULT_MACHINE})')
         qvm.add_argument('-Q', '--opts', action='append',
-                         help='QEMU verbatim option (can be repeated)')
+                         help='QEMU verbatim option (may be repeated)')
         qvm.add_argument('-q', '--qemu',
                          help=f'path to qemu application '
                               f'(default: {rel_qemu_path})')
@@ -93,7 +93,7 @@ def main():
                               f'(default to {DEFAULT_DEVICE})')
         qvm.add_argument('-t', '--trace', type=FileType('rt', encoding='utf-8'),
                          help='trace event definition file')
-        qvm.add_argument('-S', '--first-soc', default=None,
+        qvm.add_argument('-S', '--first-soc', metavar='SOC', default=None,
                          help='Identifier of the first SoC, if any')
         qvm.add_argument('-s', '--singlestep', action='store_const',
                          const=True,
@@ -127,7 +127,7 @@ def main():
                            help='OTP image file')
         files.add_argument('-o', '--otp', metavar='VMEM', help='OTP VMEM file')
         files.add_argument('-r', '--rom', metavar='ELF', action='append',
-                           help='ROM file (can be repeated, in load order)')
+                           help='ROM file (may be repeated, in load order)')
         files.add_argument('-w', '--result', metavar='CSV',
                            help='path to output result file')
         files.add_argument('-x', '--exec', metavar='file',
@@ -154,17 +154,19 @@ def main():
         extra = argparser.add_argument_group(title='Extras')
         extra.add_argument('-d', dest='dbg', action='store_true',
                            help='enable debug mode')
-        extra.add_argument('--quiet', action='store_true',
-                           help='quiet logging: only be verbose on errors')
         extra.add_argument('-G', '--log-time', action='store_true',
                            help='show local time in log messages')
         extra.add_argument('-V', '--vcp-verbose', action='count',
                            help='increase verbosity of QEMU virtual comm ports')
         extra.add_argument('-v', '--verbose', action='count',
                            help='increase verbosity')
+        extra.add_argument('--log-file', metavar='FILE',
+                           help='copy log messages to a file')
         extra.add_argument('--log-udp', type=int, metavar='UDP_PORT',
-                           help='Change UDP port for log messages, '
+                           help='change UDP port for log messages, '
                                 'use 0 to disable')
+        extra.add_argument('--quiet', action='store_true',
+                           help='quiet logging: only be verbose on errors')
         extra.add_argument('--debug', action='append', metavar='LOGGER',
                            help='assign debug level to logger(s)')
         extra.add_argument('--info', action='append', metavar='LOGGER',
@@ -199,6 +201,7 @@ def main():
                                 -1, 'flashgen', 'elf', 'otp', 'pyot.file', 1,
                                 args.vcp_verbose or 0,
                                 'pyot.vcp', name_width=30,
+                                filelog=args.log_file,
                                 ms=args.log_time, quiet=args.quiet,
                                 debug=args.debug, info=args.info,
                                 warning=args.warn)[0]

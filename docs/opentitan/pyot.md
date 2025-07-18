@@ -5,13 +5,13 @@
 ## Usage
 
 ````text
-usage: pyot.py [-h] [-A] [-D DELAY] [-i ICOUNT] [-L LOG_FILE] [-M VARIANT]
+usage: pyot.py [-h] [-A] [-D DELAY] [-i ICOUNT] [-L FILE] [-M VARIANT]
                [-N LOG] [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
-               [-t TRACE] [-S FIRST_SOC] [-s] [-U] [-b file] [-c HJSON]
-               [-e BUS] [-f RAW] [-g CFGFILE] [-H] [-K] [-l file] [-O RAW]
-               [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
-               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-d] [--quiet] [-G]
-               [-V] [-v] [--log-udp UDP_PORT] [--debug LOGGER] [--info LOGGER]
+               [-t TRACE] [-S SOC] [-s] [-U] [-b file] [-c HJSON] [-e BUS]
+               [-f RAW] [-g CFGFILE] [-H] [-K] [-l file] [-O RAW] [-o VMEM]
+               [-r ELF] [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z]
+               [-R] [-T FACTOR] [-Z] [-d] [-G] [-V] [-v] [--log-file FILE]
+               [--log-udp UDP_PORT] [--quiet] [--debug LOGGER] [--info LOGGER]
                [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
@@ -20,27 +20,25 @@ options:
   -h, --help            show this help message and exit
 
 Virtual machine:
-  -A, --asan            Redirect address sanitizer error log stream
+  -A, --asan            redirect address sanitizer error log stream
   -D, --start-delay DELAY
                         QEMU start up delay before initial comm
   -i, --icount ICOUNT   virtual instruction counter with 2^ICOUNT clock ticks
                         per inst. or 'auto'
-  -L, --log_file LOG_FILE
-                        log file for trace and log messages
+  -L, --qemu-log FILE   log file for trace and log messages
   -M, --variant VARIANT
                         machine variant (machine specific)
   -N, --log LOG         log message types
   -m, --machine MACHINE
                         virtual machine (default to ot-earlgrey)
-  -Q, --opts OPTS       QEMU verbatim option (can be repeated)
+  -Q, --opts OPTS       QEMU verbatim option (may be repeated)
   -q, --qemu QEMU       path to qemu application (default: build/qemu-system-
-                        riscv32)
+                        riscv32-unsigned)
   -P, --vcp VCP         serial port devices (default: use serial0)
   -p, --device DEVICE   serial port device name / template name (default to
                         localhost:8000)
   -t, --trace TRACE     trace event definition file
-  -S, --first-soc FIRST_SOC
-                        Identifier of the first SoC, if any
+  -S, --first-soc SOC   Identifier of the first SoC, if any
   -s, --singlestep      enable "single stepping" QEMU execution mode
   -U, --muxserial       enable multiple virtual UARTs to be muxed into same
                         host output channel
@@ -60,7 +58,7 @@ Files:
   -l, --loader file     ROM trampoline to execute, if any
   -O, --otp-raw RAW     OTP image file
   -o, --otp VMEM        OTP VMEM file
-  -r, --rom ELF         ROM file (can be repeated, in load order)
+  -r, --rom ELF         ROM file (may be repeated, in load order)
   -w, --result CSV      path to output result file
   -x, --exec file       application to load
   -X, --rom-exec        load application as ROM image (default: as kernel)
@@ -78,11 +76,12 @@ Execution:
 
 Extras:
   -d                    enable debug mode
-  --quiet               quiet logging: only be verbose on errors
   -G, --log-time        show local time in log messages
   -V, --vcp-verbose     increase verbosity of QEMU virtual comm ports
   -v, --verbose         increase verbosity
-  --log-udp UDP_PORT    Change UDP port for log messages, use 0 to disable
+  --log-file FILE       copy log messages to a file
+  --log-udp UDP_PORT    change UDP port for log messages, use 0 to disable
+  --quiet               quiet logging: only be verbose on errors
   --debug LOGGER        assign debug level to logger(s)
   --info LOGGER         assign info level to logger(s)
   --warn LOGGER         assign warning level to logger(s)
@@ -186,6 +185,7 @@ This tool may be used in two ways, which can be combined:
 * `-V` / `--vcp-verbose` can be repeated to increase verbosity of the QEMU virtual comm ports
 * `-v` / `--verbose` can be repeated to increase verbosity of the script, mostly for debug purpose.
 * `--quiet` only emit verbose log traces if an error is detected
+* `--log-file` copy log messages to the specified file (previous content if any is overwritten)
 * `--log-udp` change the port of the UDP log service on specified UDP port. Use `0` to disable the
   service.
 * `--debug` enable the debug level for the selected logger, may be repeated

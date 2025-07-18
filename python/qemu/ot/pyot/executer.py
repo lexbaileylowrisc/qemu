@@ -469,8 +469,8 @@ class QEMUExecuter:
                 qemu_args.extend(('-drive', f'if=mtd,id=eflash,'
                                             f'bus={args.embedded_flash},'
                                             f'file={flash_file},format=raw'))
-        if args.log_file:
-            qemu_args.extend(('-D', self.abspath(args.log_file)))
+        if args.qemu_log:
+            qemu_args.extend(('-D', self.abspath(args.qemu_log)))
         if args.trace:
             # use a FileType to let argparser validate presence and type
             args.trace.close()
