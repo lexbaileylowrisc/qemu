@@ -471,11 +471,12 @@ class QEMUExecuter:
                                             f'file={flash_file},format=raw'))
         if args.qemu_log:
             qemu_args.extend(('-D', self.abspath(args.qemu_log)))
-        if args.trace:
-            # use a FileType to let argparser validate presence and type
-            args.trace.close()
-            qemu_args.extend(('-trace',
-                              f'events={self.abspath(args.trace.name)}'))
+        for trace in args.trace or []:
+            qemu_args.append('-trace')
+            if isfile(trace):
+                qemu_args.append(f'events={self.abspath(trace)}')
+            else:
+                qemu_args.append(trace)
         qemu_args.extend(self._build_qemu_log_sources(args))
         if args.singlestep:
             qemu_args.extend(('-accel', 'tcg,one-insn-per-tb=on'))

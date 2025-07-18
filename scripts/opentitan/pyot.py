@@ -91,13 +91,14 @@ def main():
         qvm.add_argument('-p', '--device',
                          help=f'serial port device name / template name '
                               f'(default to {DEFAULT_DEVICE})')
-        qvm.add_argument('-t', '--trace', type=FileType('rt', encoding='utf-8'),
-                         help='trace event definition file')
         qvm.add_argument('-S', '--first-soc', metavar='SOC', default=None,
                          help='Identifier of the first SoC, if any')
         qvm.add_argument('-s', '--singlestep', action='store_const',
                          const=True,
                          help='enable "single stepping" QEMU execution mode')
+        qvm.add_argument('-t', '--trace', action='append', metavar='TRACE|FILE',
+                         default=[],
+                         help='enable trace (may be repeated)')
         qvm.add_argument('-U', '--muxserial', action='store_const',
                          const=True,
                          help='enable multiple virtual UARTs to be muxed into '

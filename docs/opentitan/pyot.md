@@ -7,12 +7,12 @@
 ````text
 usage: pyot.py [-h] [-A] [-D DELAY] [-i ICOUNT] [-L FILE] [-M VARIANT]
                [-N LOG] [-m MACHINE] [-Q OPTS] [-q QEMU] [-P VCP] [-p DEVICE]
-               [-t TRACE] [-S SOC] [-s] [-U] [-b file] [-c HJSON] [-e BUS]
-               [-f RAW] [-g CFGFILE] [-H] [-K] [-l file] [-O RAW] [-o VMEM]
-               [-r ELF] [-w CSV] [-x file] [-X] [-F TEST] [-k SECONDS] [-z]
-               [-R] [-T FACTOR] [-Z] [-d] [-G] [-V] [-v] [--log-file FILE]
-               [--log-udp UDP_PORT] [--quiet] [--debug LOGGER] [--info LOGGER]
-               [--warn LOGGER]
+               [-S SOC] [-s] [-t TRACE|FILE] [-U] [-b file] [-c HJSON]
+               [-e BUS] [-f RAW] [-g CFGFILE] [-H] [-K] [-l file] [-O RAW]
+               [-o VMEM] [-r ELF] [-w CSV] [-x file] [-X] [-F TEST]
+               [-k SECONDS] [-z] [-R] [-T FACTOR] [-Z] [-d] [-G] [-V] [-v]
+               [--log-file FILE] [--log-udp UDP_PORT] [--quiet]
+               [--debug LOGGER] [--info LOGGER] [--warn LOGGER]
 
 OpenTitan QEMU unit test sequencer.
 
@@ -37,9 +37,10 @@ Virtual machine:
   -P, --vcp VCP         serial port devices (default: use serial0)
   -p, --device DEVICE   serial port device name / template name (default to
                         localhost:8000)
-  -t, --trace TRACE     trace event definition file
   -S, --first-soc SOC   Identifier of the first SoC, if any
   -s, --singlestep      enable "single stepping" QEMU execution mode
+  -t, --trace TRACE|FILE
+                        enable trace (may be repeated)
   -U, --muxserial       enable multiple virtual UARTs to be muxed into same
                         host output channel
 
@@ -123,8 +124,8 @@ This tool may be used in two ways, which can be combined:
 * `-S` / `--first-soc` define the name of the first SoC to boot, if any. This flag is only used to
   prefix property names
 * `-s` / `--singlestep` enable QEMU "single stepping" mode.
-* `-t` / `--trace` trace event definition file. To obtain a list of available traces, invoke QEMU
-  with `-trace help` option
+* `-t` / `--trace` add trace message. May be repeaded. Either specified an event definition file,
+  or a trace event name. To obtain a list of available traces, invoke with `-trace help`.
 * `-T` / `--timeout-factor` apply a multiplier factor to all timeouts. Specified as a real number,
   it can be greater to increase timeouts or lower than 1 to decrease timeouts.
 * `-U` / `--muxserial` enable muxing QEMU VCP. This option is required when several virtual UARTs
@@ -143,7 +144,8 @@ This tool may be used in two ways, which can be combined:
    generated with the [`flashgen.py`](flashgen.md) tool. Alternatively, see the `-x` option.
 * `-g` / `--otcfg` specify a configuration file with OpenTitan configuration options, such as
    clock definitions, cryptographic constants (seeds, keys, nonces, ...). May be repeated.
-* `-H` / `--no-flash-header` executable files should be considered as raw files with no OpenTitan flash headers.
+* `-H` / `--no-flash-header` executable files should be considered as raw files with no OpenTitan
+  flash headers.
 * `-K` / `--keep-tmp` do not automatically remove temporary files and directories on exit. The user
   is in charge of discarding any generated files and directories after execution. The paths to the
   generated items are emitted as warning messages.
