@@ -51,8 +51,6 @@
 #include "hw/riscv/ibex_irq.h"
 #include "trace.h"
 
-#undef OT_KEYMGR_DPE_DEBUG
-
 #define NUM_SALT_REG          8u
 #define NUM_SW_BINDING_REG    8u
 #define NUM_ROM_DIGEST_INPUTS 2u
@@ -574,30 +572,24 @@ static const char *FST_NAMES[] = {
 #define FST_NAME(_st_) \
     (((unsigned)(_st_)) < ARRAY_SIZE(FST_NAMES) ? FST_NAMES[(_st_)] : "?")
 
-#ifdef OT_KEYMGR_DPE_DEBUG
 #define OT_KEYMGR_DPE_HEXSTR_SIZE 256u
-#define TRACE_KEYMGR_DPE(_s_, _msg_, ...) \
-    qemu_log("%s: %s: " _msg_ "\n", __func__, (_s_)->ot_id, ##__VA_ARGS__);
+
 #define ot_keymgr_dpe_dump_bigint(_s_, _b_, _l_) \
     ot_common_lhexdump(_b_, _l_, true, (_s_)->hexstr, OT_KEYMGR_DPE_HEXSTR_SIZE)
-#else
-#define ot_keymgr_dpe_dump_bigint(_s_, _b_, _l_)
-#define TRACE_KEYMGR_DPE(_s_, _msg_, ...)
-#endif
 
-static void ot_keymgr_dpe_dump_kdf_buf(OtKeyMgrDpeState *s)
+static void ot_keymgr_dpe_dump_kdf_buf(OtKeyMgrDpeState *s, const char *op)
 {
-#ifdef OT_KEYMGR_DPE_DEBUG
-    size_t msgs = (s->kdf_buf.length + OT_KMAC_APP_MSG_BYTES - 1u) /
-                  OT_KMAC_APP_MSG_BYTES;
-    for (size_t ix = 0u; ix < msgs; ix++) {
-        TRACE_KEYMGR_DPE(
-            s, "kdf_buf[%lu]: %s", ix,
-            ot_common_lhexdump(&s->kdf_buf.data[ix * OT_KMAC_APP_MSG_BYTES],
-                               OT_KMAC_APP_MSG_BYTES, true, s->hexstr,
-                               OT_KEYMGR_DPE_HEXSTR_SIZE));
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_DUMP_KDF_BUF)) {
+        size_t msgs = (s->kdf_buf.length + OT_KMAC_APP_MSG_BYTES - 1u) /
+                      OT_KMAC_APP_MSG_BYTES;
+        for (size_t ix = 0u; ix < msgs; ix++) {
+            trace_ot_keymgr_dpe_dump_kdf_buf(
+                s->ot_id, op, ix,
+                ot_keymgr_dpe_dump_bigint(
+                    s, &s->kdf_buf.data[ix * OT_KMAC_APP_MSG_BYTES],
+                    OT_KMAC_APP_MSG_BYTES));
+        }
     }
-#endif
 }
 
 #define ot_keymgr_dpe_schedule_fsm(_s_) \
@@ -782,23 +774,23 @@ static void ot_keymgr_dpe_push_key(
     kc->push_key(ki, key_share0, key_share1, key_size, valid);
 }
 
-static void ot_keymgr_dpe_send_kmac_key(OtKeyMgrDpeState *s)
+static void ot_keymgr_dpe_kmac_push_key(OtKeyMgrDpeState *s)
 {
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
     uint8_t slot_src_sel =
         (uint8_t)FIELD_EX32(ctrl, CONTROL_SHADOWED, SLOT_SRC_SEL);
     OtKeyMgrDpeSlot *src_slot = &s->key_slots[slot_src_sel];
 
-#ifdef OT_KEYMGR_DPE_DEBUG
-    uint8_t key_value[OT_KMAC_KEY_SIZE];
-    for (unsigned ix = 0u; ix < OT_KMAC_KEY_SIZE; ix++) {
-        key_value[ix] = src_slot->key.share0[ix] ^ src_slot->key.share1[ix];
-    }
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_KMAC_PUSH_KEY)) {
+        uint8_t key_value[OT_KMAC_KEY_SIZE];
+        for (unsigned ix = 0u; ix < OT_KMAC_KEY_SIZE; ix++) {
+            key_value[ix] = src_slot->key.share0[ix] ^ src_slot->key.share1[ix];
+        }
 
-    TRACE_KEYMGR_DPE(s, "KMAC key: %s valid: %d",
-                     ot_keymgr_dpe_dump_bigint(s, key_value, OT_KMAC_KEY_SIZE),
-                     src_slot->valid);
-#endif
+        trace_ot_keymgr_dpe_kmac_push_key(
+            s->ot_id, src_slot->valid,
+            ot_keymgr_dpe_dump_bigint(s, key_value, OT_KMAC_KEY_SIZE));
+    }
 
     ot_keymgr_dpe_push_key(s, KEYMGR_DPE_KEY_SINK_KMAC, src_slot->key.share0,
                            src_slot->key.share1, src_slot->valid);
@@ -824,10 +816,6 @@ static void ot_keymgr_dpe_send_kmac_req(OtKeyMgrDpeState *s)
         .msg_len = msg_len,
     };
     memcpy(req.msg_data, &s->kdf_buf.data[offset], msg_len);
-
-    TRACE_KEYMGR_DPE(s, "KMAC req: %s last: %d",
-                     ot_keymgr_dpe_dump_bigint(s, req.msg_data, req.msg_len),
-                     req.last);
 
     trace_ot_keymgr_dpe_kmac_req(s->ot_id, len, req.msg_len, req.last);
 
@@ -903,7 +891,19 @@ ot_keymgr_dpe_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     uint32_t ctrl = ot_shadow_reg_peek(&s->control);
     bool reset_kmac_key = true;
 
-    trace_ot_keymgr_dpe_kmac_rsp(s->ot_id, rsp->done);
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_KMAC_RSP)) {
+        if (rsp->done) {
+            uint8_t key[OT_KMAC_APP_DIGEST_BYTES];
+            for (unsigned ix = 0u; ix < OT_KMAC_APP_DIGEST_BYTES; ix++) {
+                key[ix] = rsp->digest_share0[ix] ^ rsp->digest_share1[ix];
+            }
+            trace_ot_keymgr_dpe_kmac_rsp(
+                s->ot_id, true,
+                ot_keymgr_dpe_dump_bigint(s, key, OT_KMAC_APP_DIGEST_BYTES));
+        } else {
+            trace_ot_keymgr_dpe_kmac_rsp(s->ot_id, false, "");
+        }
+    }
 
     if (!rsp->done) {
         /* not last response from KMAC, send more data */
@@ -912,16 +912,6 @@ ot_keymgr_dpe_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     }
 
     g_assert(s->kdf_buf.offset == s->kdf_buf.length);
-
-#ifdef OT_KEYMGR_DPE_DEBUG
-    uint8_t key[OT_KMAC_APP_DIGEST_BYTES];
-    for (unsigned ix = 0u; ix < OT_KMAC_APP_DIGEST_BYTES; ix++) {
-        key[ix] = rsp->digest_share0[ix] ^ rsp->digest_share1[ix];
-    }
-    TRACE_KEYMGR_DPE(s, "KMAC resp: %s",
-                     ot_keymgr_dpe_dump_bigint(s, key,
-                                               OT_KMAC_APP_DIGEST_BYTES));
-#endif
 
     switch (FIELD_EX32(ctrl, CONTROL_SHADOWED, OPERATION)) {
     case KEYMGR_DPE_OP_ADVANCE: {
@@ -951,6 +941,7 @@ ot_keymgr_dpe_handle_kmac_response(void *opaque, const OtKMACAppRsp *rsp)
     /* reset KMAC key if required */
     if (reset_kmac_key) {
         /* TODO: maybe push last sideloaded KMAC key instead? */
+        trace_ot_keymgr_dpe_reset_kmac_key(s->ot_id);
         ot_keymgr_dpe_push_key(s, KEYMGR_DPE_KEY_SINK_KMAC, NULL, NULL, false);
     }
 
@@ -985,14 +976,22 @@ static void ot_keymgr_dpe_kdf_push_bytes(OtKeyMgrDpeState *s,
     s->kdf_buf.length += len;
 }
 
+static void ot_keymgr_dpe_dump_kdf_material(
+    OtKeyMgrDpeState *s, const char *what, const uint8_t *buf, size_t len)
+{
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_DUMP_KDF_MATERIAL)) {
+        const char *hexstr = ot_keymgr_dpe_dump_bigint(s, buf, len);
+        trace_ot_keymgr_dpe_dump_kdf_material(s->ot_id, what, hexstr);
+    }
+}
+
 static void ot_keymgr_dpe_kdf_push_key_version(OtKeyMgrDpeState *s)
 {
     uint8_t buf[sizeof(uint32_t)];
     stl_le_p(buf, s->regs[R_KEY_VERSION]);
     ot_keymgr_dpe_kdf_push_bytes(s, buf, sizeof(uint32_t));
 
-    TRACE_KEYMGR_DPE(s, "Key Version: %s",
-                     ot_keymgr_dpe_dump_bigint(s, buf, sizeof(uint32_t)));
+    ot_keymgr_dpe_dump_kdf_material(s, "KEY_VERSION", buf, sizeof(uint32_t));
 }
 
 static size_t
@@ -1008,9 +1007,8 @@ ot_keymgr_dpe_kdf_append_creator_seed(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
                                               OT_OTP_KEYMGR_SECRET_SIZE);
 
-    TRACE_KEYMGR_DPE(s, "Creator Seed: %s",
-                     ot_keymgr_dpe_dump_bigint(s, secret.secret,
-                                               OT_OTP_KEYMGR_SECRET_SIZE));
+    ot_keymgr_dpe_dump_kdf_material(s, "CREATOR_SEED", secret.secret,
+                                    OT_OTP_KEYMGR_SECRET_SIZE);
     return OT_OTP_KEYMGR_SECRET_SIZE;
 }
 
@@ -1024,9 +1022,10 @@ static size_t ot_keymgr_dpe_kdf_append_rom_digest(
 
     ot_keymgr_dpe_kdf_push_bytes(s, rom_digest, OT_ROM_DIGEST_BYTES);
     *dvalid &= ot_keymgr_dpe_valid_data_check(rom_digest, OT_ROM_DIGEST_BYTES);
-    TRACE_KEYMGR_DPE(s, "ROM%u digest: %s", rom_idx,
-                     ot_keymgr_dpe_dump_bigint(s, rom_digest,
-                                               OT_ROM_DIGEST_BYTES));
+
+    char buf[16u];
+    snprintf(buf, sizeof(buf), "ROM%u_DIGEST", rom_idx);
+    ot_keymgr_dpe_dump_kdf_material(s, buf, rom_digest, OT_ROM_DIGEST_BYTES);
 
     return OT_ROM_DIGEST_BYTES;
 }
@@ -1042,9 +1041,8 @@ static size_t ot_keymgr_dpe_kdf_append_km_div(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &=
         ot_keymgr_dpe_valid_data_check(km_div.data, OT_LC_KEYMGR_DIV_BYTES);
 
-    TRACE_KEYMGR_DPE(s, "KeyManager div: %s",
-                     ot_keymgr_dpe_dump_bigint(s, km_div.data,
-                                               OT_LC_KEYMGR_DIV_BYTES));
+    ot_keymgr_dpe_dump_kdf_material(s, "KM_DIV", km_div.data,
+                                    OT_LC_KEYMGR_DIV_BYTES);
     return OT_LC_KEYMGR_DIV_BYTES;
 }
 
@@ -1058,9 +1056,8 @@ static size_t ot_keymgr_dpe_kdf_append_dev_id(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &= ot_keymgr_dpe_valid_data_check(hw_cfg->device_id,
                                               OT_OTP_HWCFG_DEVICE_ID_BYTES);
 
-    TRACE_KEYMGR_DPE(s, "Device ID: %s",
-                     ot_keymgr_dpe_dump_bigint(s, hw_cfg->device_id,
-                                               OT_OTP_HWCFG_DEVICE_ID_BYTES));
+    ot_keymgr_dpe_dump_kdf_material(s, "DEVICE_ID", hw_cfg->device_id,
+                                    OT_OTP_HWCFG_DEVICE_ID_BYTES);
     return OT_OTP_HWCFG_DEVICE_ID_BYTES;
 }
 
@@ -1069,9 +1066,9 @@ static size_t ot_keymgr_dpe_kdf_append_rev_seed(OtKeyMgrDpeState *s)
     ot_keymgr_dpe_kdf_push_bytes(s, s->seeds[KEYMGR_DPE_SEED_REV],
                                  KEYMGR_DPE_SEED_BYTES);
 
-    TRACE_KEYMGR_DPE(s, "Revision Seed: %s",
-                     ot_keymgr_dpe_dump_bigint(s, s->seeds[KEYMGR_DPE_SEED_REV],
-                                               KEYMGR_DPE_SEED_BYTES));
+    ot_keymgr_dpe_dump_kdf_material(s, "REV_SEED",
+                                    s->seeds[KEYMGR_DPE_SEED_REV],
+                                    KEYMGR_DPE_SEED_BYTES);
 
     return KEYMGR_DPE_SEED_BYTES;
 }
@@ -1088,9 +1085,8 @@ ot_keymgr_dpe_kdf_append_owner_seed(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
                                               OT_OTP_KEYMGR_SECRET_SIZE);
 
-    TRACE_KEYMGR_DPE(s, "Owner Seed: %s",
-                     ot_keymgr_dpe_dump_bigint(s, secret.secret,
-                                               OT_OTP_KEYMGR_SECRET_SIZE));
+    ot_keymgr_dpe_dump_kdf_material(s, "OWNER_SEED", secret.secret,
+                                    OT_OTP_KEYMGR_SECRET_SIZE);
     return OT_OTP_KEYMGR_SECRET_SIZE;
 }
 
@@ -1161,10 +1157,8 @@ static void ot_keymgr_dpe_operation_advance(OtKeyMgrDpeState *s)
     ot_keymgr_dpe_kdf_push_bytes(s, s->sw_binding,
                                  NUM_SW_BINDING_REG * sizeof(uint32_t));
     expected_kdf_len += NUM_SW_BINDING_REG * sizeof(uint32_t);
-    TRACE_KEYMGR_DPE(s, "Software Binding: %s",
-                     ot_keymgr_dpe_dump_bigint(s, s->sw_binding,
-                                               NUM_SW_BINDING_REG *
-                                                   sizeof(uint32_t)));
+    ot_keymgr_dpe_dump_kdf_material(s, "SW_BINDING", s->sw_binding,
+                                    NUM_SW_BINDING_REG * sizeof(uint32_t));
 
     /* check that we have pushed all expected KDF data*/
     g_assert(s->kdf_buf.length == expected_kdf_len);
@@ -1174,9 +1168,9 @@ static void ot_keymgr_dpe_operation_advance(OtKeyMgrDpeState *s)
     g_assert(s->kdf_buf.length <= KEYMGR_DPE_ADV_DATA_BYTES);
     s->kdf_buf.length = KEYMGR_DPE_ADV_DATA_BYTES;
 
-    ot_keymgr_dpe_send_kmac_key(s);
+    ot_keymgr_dpe_kmac_push_key(s);
 
-    ot_keymgr_dpe_dump_kdf_buf(s);
+    ot_keymgr_dpe_dump_kdf_buf(s, "adv");
     ot_keymgr_dpe_send_kmac_req(s);
 }
 
@@ -1213,9 +1207,8 @@ static void ot_keymgr_dpe_operation_gen_output(OtKeyMgrDpeState *s, bool sw)
         uint8_t *output_key = sw ? s->seeds[KEYMGR_DPE_SEED_SW_OUT] :
                                    s->seeds[KEYMGR_DPE_SEED_HW_OUT];
         ot_keymgr_dpe_kdf_push_bytes(s, output_key, KEYMGR_DPE_SEED_BYTES);
-        TRACE_KEYMGR_DPE(s, "Output Key Seed: %s",
-                         ot_keymgr_dpe_dump_bigint(s, output_key,
-                                                   KEYMGR_DPE_SEED_BYTES));
+        ot_keymgr_dpe_dump_kdf_material(s, "OUT_KEY_SEED", output_key,
+                                        KEYMGR_DPE_SEED_BYTES);
 
         /* Destination Seed (AES/KMAC/OTBN/other) */
         uint8_t *dest_seed;
@@ -1235,17 +1228,14 @@ static void ot_keymgr_dpe_operation_gen_output(OtKeyMgrDpeState *s, bool sw)
             break;
         }
         ot_keymgr_dpe_kdf_push_bytes(s, dest_seed, KEYMGR_DPE_SEED_BYTES);
-        TRACE_KEYMGR_DPE(s, "Destination Seed: %s",
-                         ot_keymgr_dpe_dump_bigint(s, dest_seed,
-                                                   KEYMGR_DPE_SEED_BYTES));
+        ot_keymgr_dpe_dump_kdf_material(s, "DEST_SEED", dest_seed,
+                                        KEYMGR_DPE_SEED_BYTES);
 
         /* Salt (software-provided via SALT_x registers) */
         ot_keymgr_dpe_kdf_push_bytes(s, s->salt,
                                      NUM_SALT_REG * sizeof(uint32_t));
-        TRACE_KEYMGR_DPE(s, "Salt: %s",
-                         ot_keymgr_dpe_dump_bigint(s, s->salt,
-                                                   NUM_SALT_REG *
-                                                       sizeof(uint32_t)));
+        ot_keymgr_dpe_dump_kdf_material(s, "SALT", s->salt,
+                                        NUM_SALT_REG * sizeof(uint32_t));
 
         /* Key Version (software-provided via KEY_VERSION register) */
         ot_keymgr_dpe_kdf_push_key_version(s);
@@ -1266,9 +1256,9 @@ static void ot_keymgr_dpe_operation_gen_output(OtKeyMgrDpeState *s, bool sw)
 
     g_assert(s->kdf_buf.length == KEYMGR_DPE_GEN_DATA_BYTES);
 
-    ot_keymgr_dpe_send_kmac_key(s);
+    ot_keymgr_dpe_kmac_push_key(s);
 
-    ot_keymgr_dpe_dump_kdf_buf(s);
+    ot_keymgr_dpe_dump_kdf_buf(s, "gen");
     ot_keymgr_dpe_send_kmac_req(s);
 }
 
@@ -1416,6 +1406,28 @@ static void ot_keymgr_dpe_xchange_main_fsm_state(
     }
 }
 
+static void ot_keymgr_dpe_get_root_key(
+    OtKeyMgrDpeState *s, OtOTPKeyMgrSecret *share0, OtOTPKeyMgrSecret *share1)
+{
+    OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp, TYPE_OT_OTP);
+    g_assert(oc);
+    oc->get_keymgr_secret(s->otp, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
+                          share0);
+    oc->get_keymgr_secret(s->otp, OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
+                          share1);
+
+    if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_DUMP_CREATOR_ROOT_KEY)) {
+        trace_ot_keymgr_dpe_dump_creator_root_key(
+            s->ot_id, 0, share0->valid,
+            ot_keymgr_dpe_dump_bigint(s, share0->secret,
+                                      OT_OTP_KEYMGR_SECRET_SIZE));
+        trace_ot_keymgr_dpe_dump_creator_root_key(
+            s->ot_id, 1, share1->valid,
+            ot_keymgr_dpe_dump_bigint(s, share1->secret,
+                                      OT_OTP_KEYMGR_SECRET_SIZE));
+    }
+}
+
 static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
 {
     OtKeyMgrDpeFSMState state = s->state;
@@ -1479,22 +1491,7 @@ static bool ot_keymgr_dpe_main_fsm_tick(OtKeyMgrDpeState *s)
             /* retrieve Creator Root Key from OTP */
             OtOTPKeyMgrSecret secret_share0 = { 0u };
             OtOTPKeyMgrSecret secret_share1 = { 0u };
-            OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp, TYPE_OT_OTP);
-            g_assert(oc);
-            oc->get_keymgr_secret(s->otp,
-                                  OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE0,
-                                  &secret_share0);
-            TRACE_KEYMGR_DPE(
-                s, "Creator Root Key share 0: %s",
-                ot_keymgr_dpe_dump_bigint(s, secret_share0.secret,
-                                          OT_OTP_KEYMGR_SECRET_SIZE));
-            oc->get_keymgr_secret(s->otp,
-                                  OTP_KEYMGR_SECRET_CREATOR_ROOT_KEY_SHARE1,
-                                  &secret_share1);
-            TRACE_KEYMGR_DPE(
-                s, "Creator Root Key share 1: %s",
-                ot_keymgr_dpe_dump_bigint(s, secret_share1.secret,
-                                          OT_OTP_KEYMGR_SECRET_SIZE));
+            ot_keymgr_dpe_get_root_key(s, &secret_share0, &secret_share1);
 
             if (secret_share0.valid && secret_share1.valid) {
                 memset(dst_slot, 0u, sizeof(OtKeyMgrDpeSlot));
@@ -2127,9 +2124,7 @@ static void ot_keymgr_dpe_init(Object *obj)
 
     s->fsm_tick_bh = qemu_bh_new(&ot_keymgr_dpe_fsm_tick, s);
 
-#ifdef OT_KEYMGR_DPE_DEBUG
     s->hexstr = g_new0(char, OT_KEYMGR_DPE_HEXSTR_SIZE);
-#endif
 }
 
 static void ot_keymgr_dpe_class_init(ObjectClass *klass, void *data)
