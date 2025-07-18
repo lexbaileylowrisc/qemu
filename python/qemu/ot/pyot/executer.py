@@ -110,8 +110,10 @@ class QEMUExecuter:
         """
         self._argdict = dict(self._args.__dict__)
         for tst in sorted(self._build_test_list()):
-            ttype = guess_file_type(tst)
-            yield f'{basename(tst)} ({ttype})'
+            tpath = self._virtual_tests.get(tst)
+            ttype = guess_file_type(tpath or tst)
+            rpath = f' [{basename(tpath)}]' if tpath else ''
+            yield f'{basename(tst)} ({ttype}){rpath}'
 
     def run(self, debug: bool, allow_no_test: bool) -> int:
         """Execute all requested tests.
