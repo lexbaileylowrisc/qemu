@@ -6,7 +6,7 @@
    :author: Emmanuel Blot <eblot@rivosinc.com>
 """
 
-from logging import getLogger
+from logging import getLogger, DEBUG, ERROR, INFO
 from os import environ, pardir, sep
 from os.path import basename, dirname, normpath, relpath
 from subprocess import Popen, PIPE, TimeoutExpired
@@ -16,6 +16,7 @@ from typing import Optional
 import re
 
 from .filemgr import QEMUFileManager
+from .util import LogMessageClassifier
 from .worker import QEMUContextWorker
 
 
@@ -42,6 +43,12 @@ class QEMUContext:
         self._env = env or {}
         self._workers: list[Popen] = []
         self._first_error: str = ''
+        self._classifier = LogMessageClassifier()
+
+    @property
+    def test_name(self) -> str:
+        """Provide the test name."""
+        return self._test_name
 
     def execute(self, ctx_name: str, code: int = 0,
                 sync: Optional[Event] = None) -> None:
@@ -119,25 +126,24 @@ class QEMUContext:
                         proc.kill()
                         outs, errs = proc.communicate()
                         ret = proc.returncode
-                    if not self._first_error:
-                        self._first_error = errs.split('\n', 1)[0]
-                    for sfp, logger in zip(
-                            (outs, errs),
-                            (self._clog.debug,
-                             self._clog.error if ret else self._clog.info)):
+                    for sfp, deflevel in zip((outs, errs),
+                                             (DEBUG, ERROR if ret else INFO)):
                         for line in sfp.split('\n'):
                             line = line.strip()
                             if line:
-                                logger(line)
+                                loglevel = self._classifier.classify(line,
+                                                                     deflevel)
+                                self._clog.log(loglevel, line)
+                                if loglevel >= ERROR and not self._first_error:
+                                    self._first_error = line
+                    if not self._first_error:
+                        self._first_error = errs.split('\n', 1)[0]
                     if ret:
                         self._clog.error("Fail to execute '%s' command for "
                                          "'%s'", cmd, self._test_name)
                         errmsg = self._first_error or \
                             f'Cannot execute [{ctx_name}] command'
                         raise OSError(ret, errmsg)
-        if ctx_name == 'post':
-            if not self._qfm.keep_temporary:
-                self._qfm.delete_default_dir(self._test_name)
 
     def check_error(self) -> int:
         """Check if any background worker exited in error.

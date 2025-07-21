@@ -24,7 +24,7 @@ import sys
 from ot.util.log import ColorLogFormatter
 from ot.util.misc import EasyDict
 
-from ot.pyot.util import ExecTime, LogMessageClassifier
+from .util import ExecTime, LogMessageClassifier
 
 
 class QEMUWrapper:
