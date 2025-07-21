@@ -529,12 +529,12 @@ static void ot_aes_trigger_reseed(OtAESState *s)
 static void ot_aes_sideload_key(OtAESState *s)
 {
     OtAESKey *key = s->sl_key;
+    OtAESContext *c = s->ctx;
 
     if (!key->valid) {
+        c->key_ready = false;
         return;
     }
-
-    OtAESContext *c = s->ctx;
 
     for (unsigned ix = 0u; ix < OT_AES_KEY_DWORD_COUNT; ix++) {
         c->key[ix] = key->share0[ix] ^ key->share1[ix];
@@ -1095,6 +1095,11 @@ static void ot_aes_push_key(OtKeySinkIf *ifd, const uint8_t *share0,
         memset(key->share1, 0, OT_AES_KEY_SIZE);
     }
     key->valid = valid;
+
+    if (ot_aes_is_sideload(s->regs)) {
+        ot_aes_sideload_key(s);
+        ot_aes_update_config(s);
+    }
 }
 
 static uint64_t ot_aes_read(void *opaque, hwaddr addr, unsigned size)
@@ -1305,6 +1310,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
         if (ot_aes_is_sideload(s->regs)) {
             ot_aes_sideload_key(s);
         }
+        ot_aes_update_config(s);
         break;
     case R_CTRL_AUX_SHADOWED:
         if (!r->ctrl_aux_regwen) {
