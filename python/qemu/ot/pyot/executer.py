@@ -11,10 +11,10 @@ from collections import defaultdict
 from csv import writer as csv_writer
 from fnmatch import fnmatchcase
 from glob import glob
-from logging import INFO as LOG_INFO, getLogger
+from logging import DEBUG as LOG_DEBUG, INFO as LOG_INFO, getLogger, FileHandler
 from os import curdir, environ, getcwd, sep
-from os.path import (basename, dirname, isabs, isfile, join as joinpath,
-                     normpath)
+from os.path import (abspath, basename, dirname, isabs, isfile,
+                     join as joinpath, normpath)
 from traceback import format_exc
 from typing import Any, Iterator, Optional
 
@@ -158,8 +158,10 @@ class QEMUExecuter:
             targs = None
             temp_files = {}
             for tpos, test in enumerate(tests, start=1):
+                test_name = None
                 self._log.info('[TEST %s] (%d/%d)', self.get_test_radix(test),
                                tpos, tcount)
+                vcplogfile = None
                 try:
                     self._qfm.define_transient({
                         'UTPATH': test,
@@ -169,6 +171,7 @@ class QEMUExecuter:
                     test_name = self.get_test_radix(test)
                     exec_info = self._build_qemu_test_command(test)
                     exec_info.test_name = test_name
+                    vcplogfile = self._log_vcp_streams(exec_info)
                     exec_info.context.execute('pre')
                     tret, xtime, err = qot.run(exec_info)
                     cret = exec_info.context.finalize()
@@ -195,11 +198,12 @@ class QEMUExecuter:
                     xtime = 0.0
                     err = str(exc)
                 finally:
+                    self._discard_vcp_log(vcplogfile)
                     self._qfm.cleanup_transient()
-                    flush_memory_loggers(['pyot', 'pyot.vcp'], LOG_INFO)
+                    if not self._qfm.keep_temporary:
+                        self._qfm.delete_default_dir(test_name)
                     flush_memory_loggers(['pyot', 'pyot.vcp', 'pyot.ctx',
-                                          'pyot.file'],
-                                         LOG_INFO)
+                                          'pyot.file'], LOG_INFO)
                 results[tret] += 1
                 sret = self.RESULT_MAP.get(tret, tret)
                 try:
@@ -496,6 +500,7 @@ class QEMUExecuter:
             raise ValueError(f"{getattr(args, 'exec', '?')}: 'trigger' and "
                              f"'validate' are mutually exclusive")
         asan = getattr(args, 'asan', False)
+        logfile = getattr(args, 'log_file', None)
         vcp_args, vcp_map = self._build_qemu_vcp_args(args)
         qemu_args.extend(vcp_args)
         qemu_args.extend(args.global_opts or [])
@@ -503,7 +508,8 @@ class QEMUExecuter:
             qemu_args.extend((str(o) for o in opts))
         return EasyDict(command=qemu_args, vcp_map=vcp_map,
                         tmpfiles=temp_files, start_delay=start_delay,
-                        trigger=trigger, validate=validate, asan=asan)
+                        trigger=trigger, validate=validate, asan=asan,
+                        logfile=logfile)
 
     def _build_qemu_test_command(self, filename: str) -> EasyDict[str, Any]:
         test_name = self.get_test_radix(filename)
@@ -715,3 +721,30 @@ class QEMUExecuter:
                 test_env = {k: self._qfm.interpolate(v) for k, v in env.items()}
         return QEMUContext(test_name, self._qfm, self._qemu_cmd, dict(context),
                            test_env)
+
+    def _log_vcp_streams(self, exec_info: EasyDict[str, Any]) -> str:
+        logfile = exec_info.get('logfile', None)
+        if not logfile:
+            return None
+        assert exec_info.test_name
+        logfile = self._qfm.interpolate_dirs(logfile, exec_info.test_name)
+        vcplog = getLogger('pyot.vcp')
+        logfh = FileHandler(logfile, 'w')
+        # log everything
+        logfh.setLevel(LOG_DEBUG)
+        # force the logger to emit all messages as well
+        # (side effect on all handlers)
+        vcplog.setLevel(LOG_DEBUG)
+        vcplog.handlers.append(logfh)
+        return logfile
+
+    def _discard_vcp_log(self, vcplogfile: Optional[str]) -> None:
+        if not vcplogfile:
+            return
+        vcplogfile = abspath(vcplogfile)
+        vcplog = getLogger('pyot.vcp')
+        for handler in vcplog.handlers:
+            if isinstance(handler, FileHandler):
+                if handler.baseFilename == vcplogfile:
+                    handler.close()
+                    vcplog.removeHandler(handler)
