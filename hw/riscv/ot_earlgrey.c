@@ -813,7 +813,8 @@ static const IbexDeviceDef ot_eg_soc_devices[] = {
             OT_EG_SOC_DEVLINK("clock-src", AST)
         ),
         .prop = IBEXDEVICEPROPDEFS(
-            IBEX_DEV_STRING_PROP("topclocks", "main:500,io:480,usb:240,aon:1"),
+            /* topclocks property overridden in ot_eg_soc_ast_configure */
+            IBEX_DEV_STRING_PROP("topclocks", "main:240,io:240,usb:480,aon:25"),
             IBEX_DEV_STRING_PROP("refclock", "aon"),
             IBEX_DEV_STRING_PROP("subclocks",
                 "io_div2:io:2,io_div4:io:4,"
@@ -1318,9 +1319,9 @@ static void ot_eg_soc_ast_configure(DeviceState *dev, const IbexDeviceDef *def,
     const char *clock_cfg;
     if (!verilator_mode) {
         /* EarlGrey/CW310 */
-        clock_cfg = "main:10000000,io:10000000,usb:10000000,aon:250000";
+        clock_cfg = "main:24000000,io:24000000,usb:48000000,aon:250000";
     } else {
-        clock_cfg = "main:500000,io:500000,usb:500000,aon:250000";
+        clock_cfg = "main:500000,io:500000,usb:500000,aon:125000";
     }
 
     qdev_prop_set_string(dev, "topclocks", clock_cfg);
