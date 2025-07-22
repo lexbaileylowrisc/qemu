@@ -27,6 +27,10 @@ lint_title() {
     echo "    [ot] hw/opentitan: ot_hmac: fix i2c register address" >&2
   }
 
+  if echo "$title" | grep -P -q '^FROMLIST:'; then
+    exit 0
+  fi
+
   if ! echo "$title" | grep -P -q '^\[ot\]'; then
     echo "::error::${short_hash}: commit titles must have the prefix '[ot]'" >&2
     example
