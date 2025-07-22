@@ -523,6 +523,7 @@ ot_sram_ctrl_reseed(const char *id) "%s"
 ot_sram_ctrl_schedule_init(const char *id) "%s"
 ot_sram_ctrl_seed_status(const char *id, bool seed_valid) "%s: seed valid: %u"
 ot_sram_ctrl_switch_mem(const char *id, const char *dest) "%s: to %s"
+ot_sram_ctrl_update_exec(const char *id, bool cifetch, bool rifetch, bool oifetch, bool gifetch) "%s: cfg:%u csr:%u otp:%u res:%u"
 
 # ot_timer.c
 

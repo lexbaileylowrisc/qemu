@@ -40,6 +40,7 @@
 #include "hw/opentitan/ot_otp.h"
 #include "hw/opentitan/ot_prng.h"
 #include "hw/opentitan/ot_sram_ctrl.h"
+#include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
@@ -133,11 +134,12 @@ struct OtSramCtrlState {
     unsigned wsize; /* size of RAM in words */
     bool initialized; /* SRAM has been fully initialized at least once */
     bool initializing; /* CTRL.INIT has been requested */
-    bool otp_ifetch;
-    bool cfg_ifetch;
+    bool otp_ifetch; /* whether OTP enable execution from this RAM */
+    bool csr_ifetch; /* whether CSR enable execution from this RAM */
 
     char *ot_id;
     OtOTPState *otp_ctrl; /* optional */
+    OtVMapperState *vmapper; /* optional */
     uint32_t size; /* in bytes */
     uint32_t init_chunk_words; /* init chunk size in words */
     bool ifetch; /* only used when no otp_ctrl is defined */
@@ -349,6 +351,41 @@ static void ot_sram_ctrl_start_initialization(OtSramCtrlState *s)
     ot_sram_ctrl_initialize(s, count, false);
 }
 
+static void ot_sram_ctrl_update_exec(OtSramCtrlState *s)
+{
+    /*
+     * OTP content is not known on reset, as OTP initialization is delayed.
+     * Configuration need to be loaded on demand
+     */
+    if (s->otp_ctrl) {
+        OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
+        s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch ==
+                        OT_MULTIBITBOOL8_TRUE;
+    }
+
+    bool ifetch = s->ifetch && s->csr_ifetch && s->otp_ifetch;
+
+    trace_ot_sram_ctrl_update_exec(s->ot_id, s->ifetch, s->csr_ifetch,
+                                   s->otp_ifetch, ifetch);
+
+    if (!s->vmapper) {
+        if (!ifetch) {
+            qemu_log_mask(LOG_UNIMP,
+                          "%s: %s: Cannot disable execution, "
+                          "VMapper not associated\n",
+                          __func__, s->ot_id);
+        }
+
+        /* for now, vmapper is not a mandatory feature */
+        return;
+    }
+
+    const MemoryRegion *mr = s->noinit ? &s->mem->sram : &s->mem->alias;
+
+    OtVMapperClass *vm = OT_VMAPPER_GET_CLASS(s->vmapper);
+    vm->disable_exec(s->vmapper, mr, !ifetch);
+}
+
 static uint64_t ot_sram_ctrl_regs_read(void *opaque, hwaddr addr, unsigned size)
 {
     OtSramCtrlState *s = opaque;
@@ -411,17 +448,16 @@ static void ot_sram_ctrl_regs_write(void *opaque, hwaddr addr, uint64_t val64,
         s->regs[reg] &= val32; /* RW0C */
         break;
     case R_EXEC:
-        if (s->regs[R_EXEC_REGWEN]) {
-            val32 &= R_EXEC_EN_MASK;
-            s->regs[reg] = val32;
-            if ((s->regs[reg] == OT_MULTIBITBOOL4_TRUE) && s->otp_ifetch) {
-                s->cfg_ifetch = true;
-            }
-        } else {
+        if (!s->regs[R_EXEC_REGWEN]) {
             qemu_log_mask(LOG_GUEST_ERROR,
                           "%s: %s R_EXEC protected w/ REGWEN\n", __func__,
                           s->ot_id);
+            break;
         }
+        val32 &= R_EXEC_EN_MASK;
+        s->regs[reg] = val32;
+        s->csr_ifetch = (s->regs[reg] == OT_MULTIBITBOOL4_TRUE);
+        ot_sram_ctrl_update_exec(s);
         break;
     case R_CTRL_REGWEN:
         val32 &= R_CTRL_REGWEN_CTRL_REGWEN_MASK;
@@ -654,6 +690,8 @@ static Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSramCtrlState, ot_id),
     DEFINE_PROP_LINK("otp_ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP,
                      OtOTPState *),
+    DEFINE_PROP_LINK("vmapper", OtSramCtrlState, vmapper, TYPE_OT_VMAPPER,
+                     OtVMapperState *),
     DEFINE_PROP_UINT32("size", OtSramCtrlState, size, 0u),
     DEFINE_PROP_UINT32("wci_size", OtSramCtrlState, init_chunk_words, 0u),
     DEFINE_PROP_BOOL("ifetch", OtSramCtrlState, ifetch, false),
@@ -701,8 +739,6 @@ static void ot_sram_ctrl_reset_enter(Object *obj, ResetType type)
     s->regs[R_READBACK_REGWEN] = 0x1u;
     s->regs[R_READBACK] = OT_MULTIBITBOOL4_FALSE;
 
-    s->cfg_ifetch = 0u; /* not used for now */
-
     ibex_irq_set(&s->alert, (int)(bool)s->regs[R_ALERT_TEST]);
 }
 
@@ -715,16 +751,13 @@ static void ot_sram_ctrl_reset_exit(Object *obj, ResetType type)
         c->parent_phases.exit(obj, type);
     }
 
-    if (s->otp_ctrl) {
-        OtOTPClass *oc = OBJECT_GET_CLASS(OtOTPClass, s->otp_ctrl, TYPE_OT_OTP);
-        s->otp_ifetch = oc->get_hw_cfg(s->otp_ctrl)->en_sram_ifetch ==
-                        OT_MULTIBITBOOL8_TRUE;
-    } else {
-        s->otp_ifetch = s->ifetch;
-    }
-
     int64_t now = qemu_clock_get_ms(QEMU_CLOCK_REALTIME);
     ot_prng_reseed(s->prng, (uint32_t)now);
+
+    s->otp_ifetch = (s->otp_ctrl == NULL);
+    s->csr_ifetch = (s->regs[R_EXEC] == OT_MULTIBITBOOL4_TRUE);
+
+    ot_sram_ctrl_update_exec(s);
 }
 
 static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
@@ -733,6 +766,12 @@ static void ot_sram_ctrl_realize(DeviceState *dev, Error **errp)
 
     g_assert(s->ot_id);
     g_assert(s->size);
+
+    /*
+     * for now, vmapper is optional if ifetch is enabled and there's no
+     * associated OTP
+     */
+    g_assert(s->ifetch || !s->otp_ctrl || s->vmapper);
 
     s->wsize = DIV_ROUND_UP(s->size, sizeof(uint32_t));
     unsigned size = s->wsize * sizeof(uint32_t);
