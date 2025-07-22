@@ -132,7 +132,7 @@ keymgr-dpe.py -vv -c ot.cfg -j otp_ctrl_mmap.hjson -m img_otp.vmem -l lc_ctrl_st
     -r rom0.elf -r keymgr-dpe-basic-test -z 64Ki -z 32Ki -t SW -k 0 -s 0
 ````
 
-## Execute options
+## Execute options [execute-options]
 
 This mode can be used to execute a sequence of steps, with multiple key generations.
 
@@ -148,36 +148,40 @@ options:
   -s, --sequence INI  execution sequence definition
 ```
 
-Typical input file:
+### Arguments
 
-````ini
-[step_1]
-mode = initialize
-dst = 0
+* `-s` specify an INI-like configuration file containing the sequence of steps to execute
 
-[step_2]
-mode = advance
-binding = [0]
-src = 0
-dst = 1
-allow_child = true
-exportable = true
-retain_parent = true
+    Typical input file:
 
-[step_3]
-mode = generate
-src = 1
-dst = otbn
-key_version = 0
-salt = "[49379059ff52399275666880c0e44716999612df80f1a9de481eae4045e2c7f0]"
+    ````ini
+    [step_1]
+    mode = initialize
+    dst = 0
 
-[step_4]
-mode = generate
-src = 1
-dst = none
-key_version = 0
-salt = "[49379059ff52399275666880c0e44716999612df80f1a9de481eae4045e2c7f0]"
-````
+    [step_2]
+    mode = advance
+    binding = [0]
+    src = 0
+    dst = 1
+    allow_child = true
+    exportable = true
+    retain_parent = true
+
+    [step_3]
+    mode = generate
+    src = 1
+    dst = otbn
+    key_version = 0
+    salt = "[49379059ff52399275666880c0e44716999612df80f1a9de481eae4045e2c7f0]"
+
+    [step_4]
+    mode = generate
+    src = 1
+    dst = none
+    key_version = 0
+    salt = "[49379059ff52399275666880c0e44716999612df80f1a9de481eae4045e2c7f0]"
+    ````
 
 ## Verify options
 
@@ -195,12 +199,6 @@ verification is performed on the resulting hash value.
 memory, which is then read back by the Ibex core. In this cas, the direct key is verified.
 
 ```
-usage: keymgr-dpe.py execute [-h] -s INI
-
-options:
-  -h, --help          show this help message and exit
-  -s, --sequence INI  execution sequence definition
-Rivos/qemu-ga0> scripts/opentitan/keymgr-dpe.py verify -h
 usage: keymgr-dpe.py verify [-h] -l LOG
 
 options:
@@ -208,5 +206,12 @@ options:
   -l, --exec-log LOG  execution log to verify
 ```
 
-[`pyot.py`](pyot.md) script may be used to generate the log file, see `--log-file` option or the
-`log_file` test parameter.
+### Arguments
+
+* `-l` specify the execution log to verify. The execution log is expected to contain the output of
+  a test that has run on the OpenTitan platform. It should emit a syntax identitical to the format
+  described in the [Execute options](#execute-options) section, _i.e._ an INI-like syntax. To distinguish INI
+  syntax from any other log output, each line of interest should be prefixed with a `T> ` marker.
+
+    [`pyot.py`](pyot.md) script may be used to generate the log file, see `--log-file` option or the
+    `log_file` test parameter.
