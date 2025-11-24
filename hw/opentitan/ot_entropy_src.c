@@ -1796,12 +1796,11 @@ static const MemoryRegionOps ot_entropy_src_hi_ops = {
     },
 };
 
-static Property ot_entropy_src_properties[] = {
+static const Property ot_entropy_src_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtEntropySrcState, ot_id),
     DEFINE_PROP_UINT32("version", OtEntropySrcState, version, 0),
     DEFINE_PROP_LINK("noise-src", OtEntropySrcState, noise_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_entropy_src_reset_enter(Object *obj, ResetType type)
@@ -1955,7 +1954,7 @@ static void ot_entropy_src_init(Object *obj)
     s->scheduler = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_entropy_src_scheduler, s);
 }
 
-static void ot_entropy_src_class_init(ObjectClass *klass, void *data)
+static void ot_entropy_src_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

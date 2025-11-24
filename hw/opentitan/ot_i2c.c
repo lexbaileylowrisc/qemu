@@ -1295,7 +1295,7 @@ static bool ot_i2c_target_match_and_add(I2CSlave *candidate, uint8_t address,
     return false;
 }
 
-static void ot_i2c_target_class_init(ObjectClass *klass, void *data)
+static void ot_i2c_target_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     I2CSlaveClass *sc = I2C_SLAVE_CLASS(klass);
@@ -1325,12 +1325,11 @@ static const MemoryRegionOps ot_i2c_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ot_i2c_properties[] = {
+static const Property ot_i2c_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtI2CState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtI2CState, clock_name),
     DEFINE_PROP_LINK("clock-src", OtI2CState, clock_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_i2c_reset_enter(Object *obj, ResetType type)
@@ -1409,7 +1408,7 @@ static void ot_i2c_init(Object *obj)
     ot_fifo32_create(&s->target_rx_fifo, OT_I2C_ACQ_FIFO_SIZE);
 }
 
-static void ot_i2c_class_init(ObjectClass *klass, void *data)
+static void ot_i2c_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

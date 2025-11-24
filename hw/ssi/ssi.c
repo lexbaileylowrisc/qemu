@@ -52,7 +52,7 @@ static bool ssi_bus_check_address(BusState *b, DeviceState *dev, Error **errp)
     return true;
 }
 
-static void ssi_bus_class_init(ObjectClass *klass, void *data)
+static void ssi_bus_class_init(ObjectClass *klass, const void *data)
 {
     BusClass *k = BUS_CLASS(klass);
 
@@ -105,12 +105,11 @@ static void ssi_peripheral_realize(DeviceState *dev, Error **errp)
     ssc->realize(s, errp);
 }
 
-static Property ssi_peripheral_properties[] = {
+static const Property ssi_peripheral_properties[] = {
     DEFINE_PROP_UINT8("cs", SSIPeripheral, cs_index, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ssi_peripheral_class_init(ObjectClass *klass, void *data)
+static void ssi_peripheral_class_init(ObjectClass *klass, const void *data)
 {
     SSIPeripheralClass *ssc = SSI_PERIPHERAL_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);

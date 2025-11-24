@@ -172,10 +172,9 @@ static const MemoryRegionOps ibexdemo_timer_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ibexdemo_timer_properties[] = {
+static const Property ibexdemo_timer_properties[] = {
     DEFINE_PROP_UINT32("timebase-freq", IbexDemoTimerState, timebase_freq,
                        50000000),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ibexdemo_timer_init(Object *obj)
@@ -203,7 +202,7 @@ static void ibexdemo_timer_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_out(dev, &s->irq.irq, 1);
 }
 
-static void ibexdemo_timer_class_init(ObjectClass *klass, void *data)
+static void ibexdemo_timer_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

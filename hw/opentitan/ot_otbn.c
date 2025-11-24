@@ -689,7 +689,7 @@ static inline void ot_otbn_dmem_write(void *opaque, hwaddr addr, uint64_t val64,
                              (uint32_t)val64);
 }
 
-static Property ot_otbn_properties[] = {
+static const Property ot_otbn_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTBNState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtOTBNState, clock_name),
     DEFINE_PROP_LINK("clock-src", OtOTBNState, clock_src, TYPE_DEVICE,
@@ -703,7 +703,6 @@ static Property ot_otbn_properties[] = {
     DEFINE_PROP_UINT8("edn-r-ep", OtOTBNState, rnds[OT_OTBN_RND].ep, UINT8_MAX),
     DEFINE_PROP_STRING("logfile", OtOTBNState, log_file),
     DEFINE_PROP_BOOL("logasm", OtOTBNState, log_asm, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_otbn_regs_ops = {
@@ -868,7 +867,7 @@ static void ot_otbn_init(Object *obj)
 #endif
 }
 
-static void ot_otbn_class_init(ObjectClass *klass, void *data)
+static void ot_otbn_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

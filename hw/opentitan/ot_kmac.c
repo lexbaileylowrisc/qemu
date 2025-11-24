@@ -1796,7 +1796,7 @@ static void ot_kmac_app_request(OtKMACState *s, unsigned app_idx,
     }
 }
 
-static Property ot_kmac_properties[] = {
+static const Property ot_kmac_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKMACState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtKMACState, clock_name),
     DEFINE_PROP_LINK("clock-src", OtKMACState, clock_src, TYPE_DEVICE,
@@ -1804,7 +1804,6 @@ static Property ot_kmac_properties[] = {
     DEFINE_PROP_LINK("edn", OtKMACState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtKMACState, edn_ep, UINT8_MAX),
     DEFINE_PROP_UINT8("num-app", OtKMACState, num_app, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_kmac_regs_ops = {
@@ -1954,7 +1953,7 @@ static void ot_kmac_init(Object *obj)
     s->hexstr = g_new0(char, OT_KMAC_KEY_HEXSTR_SIZE);
 }
 
-static void ot_kmac_class_init(ObjectClass *klass, void *data)
+static void ot_kmac_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

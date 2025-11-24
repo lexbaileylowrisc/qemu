@@ -44,7 +44,7 @@
 #include "hw/riscv/ibex_clock_src.h"
 #include "hw/riscv/ibex_common.h"
 #include "monitor/monitor.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 static void rust_demangle_fn(const char *st_name, int st_info,

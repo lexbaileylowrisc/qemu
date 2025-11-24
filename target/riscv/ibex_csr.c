@@ -28,6 +28,8 @@
 #include "cpu.h"
 /* NOLINTEND(misc-header-include-cycle) */
 
+#if !defined(CONFIG_USER_ONLY)
+
 /* Custom CSRs */
 #define CSR_CPUCTRLSTS 0x7c0
 #define CSR_SECURESEED 0x7c1
@@ -40,8 +42,6 @@
 #define CPUCTRLSTS_DOUBLE_FAULT_SEEN 0x080
 #define CPUCTRLSTS_IC_SCR_KEY_VALID  0x100
 
-#if !defined(CONFIG_USER_ONLY)
-
 static RISCVException read_cpuctrlsts(CPURISCVState *env, int csrno,
                                       target_ulong *val)
 {
@@ -51,9 +51,10 @@ static RISCVException read_cpuctrlsts(CPURISCVState *env, int csrno,
 }
 
 static RISCVException write_cpuctrlsts(CPURISCVState *env, int csrno,
-                                       target_ulong val)
+                                       target_ulong val, uintptr_t ra)
 {
     (void)csrno;
+    (void)ra;
     /* b7 can only be cleared */
     env->cpuctrlsts &= ~0xbf;
     /* b6 should be cleared on mret */
@@ -75,11 +76,12 @@ static RISCVException read_secureseed(CPURISCVState *env, int csrno,
 }
 
 static RISCVException write_secureseed(CPURISCVState *env, int csrno,
-                                       target_ulong val)
+                                       target_ulong val, uintptr_t ra)
 {
     (void)env;
     (void)csrno;
     (void)val;
+    (void)ra;
     return RISCV_EXCP_NONE;
 }
 
@@ -104,9 +106,10 @@ static RISCVException read_mtvec(CPURISCVState *env, int csrno,
 }
 
 static RISCVException write_mtvec(CPURISCVState *env, int csrno,
-                                  target_ulong val)
+                                  target_ulong val, uintptr_t ra)
 {
     (void)csrno;
+    (void)ra;
     /* bits [1:0] encode mode; Ibex only supports 1 = vectored */
     if ((val & 3u) != 1u) {
         qemu_log_mask(LOG_UNIMP,
@@ -124,52 +127,22 @@ static RISCVException write_mtvec(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
-typedef struct {
-    int csrno;
-    riscv_csr_operations ops;
-} riscv_custom_csr_operations;
+#endif /* !defined(CONFIG_USER_ONLY) */
 
-static riscv_custom_csr_operations csr_ibex_ops[] = {
+const RISCVCSR ibex_csr_list[] = {
+#if !defined(CONFIG_USER_ONLY)
     {
         .csrno = CSR_MTVEC,
-        .ops = { "mtvec", any, &read_mtvec, &write_mtvec },
+        .csr_ops = { "mtvec", any, &read_mtvec, &write_mtvec },
     },
     {
         .csrno = CSR_CPUCTRLSTS,
-        .ops = { "cpuctrlsts", any, &read_cpuctrlsts, &write_cpuctrlsts },
+        .csr_ops = { "cpuctrlsts", any, &read_cpuctrlsts, &write_cpuctrlsts },
     },
     {
         .csrno = CSR_SECURESEED,
-        .ops = { "secureseed", any, &read_secureseed, &write_secureseed },
+        .csr_ops = { "secureseed", any, &read_secureseed, &write_secureseed },
     },
+#endif /* !defined(CONFIG_USER_ONLY) */
+    {},
 };
-
-#endif /* !defined(CONFIG_USER_ONLY) */
-
-static bool ibex_csr_ops_added;
-
-void riscv_add_ibex_csr_ops(RISCVCPU *cpu)
-{
-    (void)cpu;
-
-    /*
-     * Since the CSR operations table is global, we only need to do
-     * this once, regardless of where it's called from. Currently, the
-     * call is coming from the Ibex/EarlGrey CPU instance init function,
-     * which happens before all CPU properties are set. Therefore all
-     * Ibex extension CSRs are added unconditionally, and the
-     * predicate functions will filter out illegal requests based on
-     * CPU config properties.
-     */
-    if (ibex_csr_ops_added) {
-        return;
-    }
-
-#if !defined(CONFIG_USER_ONLY)
-    for (unsigned ix = 0; ix < ARRAY_SIZE(csr_ibex_ops); ix++) {
-        riscv_set_csr_ops(csr_ibex_ops[ix].csrno, &csr_ibex_ops[ix].ops);
-    }
-#endif /* !defined(CONFIG_USER_ONLY) */
-
-    ibex_csr_ops_added = true;
-}

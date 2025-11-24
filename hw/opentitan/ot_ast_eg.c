@@ -467,10 +467,9 @@ static void ot_ast_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_ast_eg_properties[] = {
+static const Property ot_ast_eg_properties[] = {
     DEFINE_PROP_STRING("topclocks", OtASTEgState, cfg_topclocks),
     DEFINE_PROP_STRING("aonclocks", OtASTEgState, cfg_aonclocks),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_ast_eg_regs_ops = {
@@ -567,7 +566,7 @@ static void ot_ast_eg_init(Object *obj)
     s->regsb = g_new0(uint32_t, REGSB_COUNT);
 }
 
-static void ot_ast_eg_class_init(ObjectClass *klass, void *data)
+static void ot_ast_eg_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

@@ -553,10 +553,9 @@ static void st7735_update_display(void *opaque)
     s->redraw = false;
 }
 
-static Property st7735_properties[] = {
+static const Property st7735_properties[] = {
     DEFINE_PROP_UINT16("width", St7735State, width, ST7735_DEFAULT_WIDTH),
     DEFINE_PROP_UINT16("height", St7735State, height, ST7735_DEFAULT_HEIGHT),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const GraphicHwOps st7735_ui_ops = {
@@ -585,7 +584,7 @@ static void st7735_realize(SSIPeripheral *dev, Error **errp)
     }
 }
 
-static void st7735_class_init(ObjectClass *klass, void *data)
+static void st7735_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     SSIPeripheralClass *k = SSI_PERIPHERAL_CLASS(klass);

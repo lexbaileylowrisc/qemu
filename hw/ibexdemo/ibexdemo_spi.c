@@ -104,10 +104,6 @@ static const MemoryRegionOps ibexdemo_spi_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ibexdemo_spi_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void ibexdemo_spi_init(Object *obj)
 {
     IbexDemoSPIState *s = IBEXDEMO_SPI(obj);
@@ -124,13 +120,12 @@ static void ibexdemo_spi_realize(DeviceState *dev, Error **errp)
     /* empty */
 }
 
-static void ibexdemo_spi_class_init(ObjectClass *klass, void *data)
+static void ibexdemo_spi_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_legacy_reset(dc, &ibexdemo_spi_reset);
     dc->realize = &ibexdemo_spi_realize;
-    device_class_set_props(dc, ibexdemo_spi_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 

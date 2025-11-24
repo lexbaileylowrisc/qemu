@@ -42,7 +42,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 #define NUM_INT_RST_REQS   2u
@@ -985,7 +985,7 @@ static void ot_pwrmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_pwrmgr_properties[] = {
+static const Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtPwrMgrState, ot_id),
     DEFINE_PROP_STRING("clocks", OtPwrMgrState, cfg_clocks),
     DEFINE_PROP_LINK("clock-ctrl", OtPwrMgrState, clock_ctrl, TYPE_DEVICE,
@@ -994,7 +994,6 @@ static Property ot_pwrmgr_properties[] = {
     DEFINE_PROP_UINT8("version", OtPwrMgrState, version, UINT8_MAX),
     DEFINE_PROP_BOOL("fetch-ctrl", OtPwrMgrState, fetch_ctrl, false),
     DEFINE_PROP_BOOL("main", OtPwrMgrState, main, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_pwrmgr_regs_ops = {
@@ -1131,7 +1130,7 @@ static void ot_pwrmgr_init(Object *obj)
     s->fsm_tick_bh = qemu_bh_new(&ot_pwrmgr_fsm_tick, s);
 }
 
-static void ot_pwrmgr_class_init(ObjectClass *klass, void *data)
+static void ot_pwrmgr_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

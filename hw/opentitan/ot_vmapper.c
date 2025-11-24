@@ -28,13 +28,17 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "qemu/typedefs.h"
-#include "exec/exec-all.h"
+#include "exec/cputlb.h"
 #include "exec/page-protection.h"
+#include "exec/target_page.h"
 #include "hw/boards.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_vmapper.h"
 #include "hw/qdev-properties.h"
 #include "hw/riscv/ibex_common.h"
+/* NOLINTBEGIN(misc-header-include-cycle) */
+#include "target/riscv/cpu.h"
+/* NOLINTEND(misc-header-include-cycle) */
 #include "trace.h"
 
 /* define to log range definitions */
@@ -103,7 +107,7 @@ struct OtVMapperState {
 #define VMAP_TREE_KEY_TO_RANGE_END(_g_) ((uint32_t)(((uintptr_t)(_g_)) >> 32u))
 
 /*
- * order ranges for g_list_sort_with_data
+ * order ranges for g_list_sort
  *  1. by start address first,
  *  2. then by end address,
  *  3. then by priority (from higest to lowest)
@@ -1050,13 +1054,12 @@ static void ot_vmapper_override_vcpu_config(OtVMapperState *s)
     cpu->env.vaddr_pmp = true;
 }
 
-static Property ot_vmapper_properties[] = {
+static const Property ot_vmapper_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtVMapperState, ot_id),
     DEFINE_PROP_UINT8("cpu_index", OtVMapperState, cpu_idx, UINT8_MAX),
     DEFINE_PROP_UINT8("trans_count", OtVMapperState, trans_count, UINT8_MAX),
     DEFINE_PROP_UINT8("noexec_count", OtVMapperState, noexec_count,
                       OT_VMAPPER_DEFAULT_NOEXEC_REGION_COUNT),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_vmapper_reset_enter(Object *obj, ResetType type)
@@ -1153,7 +1156,7 @@ static void ot_vmapper_init(Object *obj)
     s->itree = ot_vmapper_create_tree(s);
 }
 
-static void ot_vmapper_class_init(ObjectClass *klass, void *data)
+static void ot_vmapper_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

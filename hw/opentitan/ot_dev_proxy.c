@@ -34,7 +34,6 @@
 #include "qapi/qapi-commands-misc.h"
 #include "qom/object.h"
 #include "chardev/char-fe.h"
-#include "exec/memory.h"
 #include "hw/core/cpu.h"
 #include "hw/irq.h"
 #include "hw/opentitan/ot_common.h"
@@ -46,7 +45,8 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/memory.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 /* ------------------------------------------------------------------------ */
@@ -1890,9 +1890,8 @@ static void ot_dev_proxy_discover(OtDevProxyState *s)
     object_child_foreach_recursive(ms, &ot_dev_proxy_map_bus, s);
 }
 
-static Property ot_dev_proxy_properties[] = {
+static const Property ot_dev_proxy_properties[] = {
     DEFINE_PROP_CHR("chardev", OtDevProxyState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_dev_proxy_reset_enter(Object *obj, ResetType type)
@@ -1934,7 +1933,7 @@ static void ot_dev_proxy_init(Object *obj)
     QSIMPLEQ_INIT(&s->watchers);
 }
 
-static void ot_dev_proxy_class_init(ObjectClass *klass, void *data)
+static void ot_dev_proxy_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
@@ -2002,7 +2001,7 @@ static MemTxResult ot_dev_proxy_watcher_write_with_attrs(
     return MEMTX_OK;
 }
 
-static Property ot_dev_proxy_watcher_properties[] = {
+static const Property ot_dev_proxy_watcher_properties[] = {
     DEFINE_PROP_LINK("devproxy", OtDevProxyWatcherState, devproxy,
                      TYPE_OT_DEV_PROXY, OtDevProxyState *),
     DEFINE_PROP_LINK("root", OtDevProxyWatcherState, root, TYPE_MEMORY_REGION,
@@ -2014,7 +2013,6 @@ static Property ot_dev_proxy_watcher_properties[] = {
     DEFINE_PROP_UINT32("stop", OtDevProxyWatcherState, stop, UINT32_MAX),
     DEFINE_PROP_BOOL("read", OtDevProxyWatcherState, read, UINT32_MAX),
     DEFINE_PROP_BOOL("write", OtDevProxyWatcherState, write, UINT32_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_dev_proxy_watcher_ops = {
@@ -2055,7 +2053,8 @@ static void ot_dev_proxy_watcher_unrealize(DeviceState *dev)
     QSIMPLEQ_REMOVE(&proxy->watchers, s, OtDevProxyWatcherState, watcher);
 }
 
-static void ot_dev_proxy_watcher_class_init(ObjectClass *klass, void *data)
+static void
+ot_dev_proxy_watcher_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

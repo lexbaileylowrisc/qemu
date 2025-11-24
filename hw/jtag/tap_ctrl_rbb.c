@@ -42,7 +42,7 @@
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
 #include "hw/resettable.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 
@@ -622,13 +622,12 @@ static int tap_ctrl_rbb_register_instruction(TapCtrlIf *dev, unsigned code,
     return 0;
 }
 
-static Property tap_ctrl_rbb_properties[] = {
+static const Property tap_ctrl_rbb_properties[] = {
     DEFINE_PROP_UINT32("idcode", TapCtrlRbbState, idcode, 0),
     DEFINE_PROP_UINT8("ir_length", TapCtrlRbbState, ir_length, 0),
     DEFINE_PROP_UINT8("idcode_inst", TapCtrlRbbState, idcode_inst, 1u),
     DEFINE_PROP_BOOL("quit", TapCtrlRbbState, enable_quit, true),
     DEFINE_PROP_CHR("chardev", TapCtrlRbbState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void tap_ctrl_rbb_realize(DeviceState *dev, Error **errp)
@@ -689,7 +688,7 @@ static void tap_ctrl_rbb_init(Object *obj)
                                           tap_ctrl_rbb_free_data_handler);
 }
 
-static void tap_ctrl_rbb_class_init(ObjectClass *klass, void *data)
+static void tap_ctrl_rbb_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

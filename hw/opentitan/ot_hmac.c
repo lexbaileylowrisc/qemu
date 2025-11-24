@@ -1211,12 +1211,11 @@ static void ot_hmac_fifo_write(void *opaque, hwaddr addr, uint64_t value,
     }
 }
 
-static Property ot_hmac_properties[] = {
+static const Property ot_hmac_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtHMACState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtHMACState, clock_name),
     DEFINE_PROP_LINK("clock-src", OtHMACState, clock_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_hmac_regs_ops = {
@@ -1336,7 +1335,7 @@ static void ot_hmac_init(Object *obj)
     fifo8_create(&s->input_fifo, OT_HMAC_FIFO_LENGTH);
 }
 
-static void ot_hmac_class_init(ObjectClass *klass, void *data)
+static void ot_hmac_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

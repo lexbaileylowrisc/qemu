@@ -643,7 +643,7 @@ static const MemoryRegionOps ot_uart_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ot_uart_properties[] = {
+static const Property ot_uart_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtUARTState, ot_id),
     DEFINE_PROP_CHR("chardev", OtUARTState, chr),
     DEFINE_PROP_STRING("clock-name", OtUARTState, clock_name),
@@ -651,7 +651,6 @@ static Property ot_uart_properties[] = {
                      DeviceState *),
     DEFINE_PROP_BOOL("oversample-break", OtUARTState, oversample_break, false),
     DEFINE_PROP_BOOL("toggle-break", OtUARTState, toggle_break, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static int ot_uart_be_change(void *opaque)
@@ -752,7 +751,7 @@ static void ot_uart_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 }
 
-static void ot_uart_class_init(ObjectClass *klass, void *data)
+static void ot_uart_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

@@ -223,9 +223,8 @@ static const MemoryRegionOps ibexdemo_uart_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ibexdemo_uart_properties[] = {
+static const Property ibexdemo_uart_properties[] = {
     DEFINE_PROP_CHR("chardev", IbexDemoUARTState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static int ibexdemo_uart_be_change(void *opaque)
@@ -270,7 +269,7 @@ static void ibexdemo_uart_init(Object *obj)
     fifo8_create(&s->tx_fifo, IBEXDEMO_UART_TX_FIFO_SIZE);
 }
 
-static void ibexdemo_uart_class_init(ObjectClass *klass, void *data)
+static void ibexdemo_uart_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

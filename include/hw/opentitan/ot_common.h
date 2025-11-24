@@ -25,9 +25,9 @@
 #define HW_OPENTITAN_OT_COMMON_H
 
 #include "chardev/char.h"
-#include "exec/memory.h"
 #include "hw/core/cpu.h"
 #include "hw/riscv/ibex_common.h"
+#include "system/memory.h"
 
 /* ------------------------------------------------------------------------ */
 /* Timer */

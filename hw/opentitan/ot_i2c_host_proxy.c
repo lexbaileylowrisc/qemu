@@ -323,9 +323,8 @@ static void ot_i2c_host_proxy_init(Object *obj)
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_i2c_host_proxy_timer, (void *)s);
 }
 
-static Property ot_i2c_host_proxy_properties[] = {
+static const Property ot_i2c_host_proxy_properties[] = {
     DEFINE_PROP_CHR("chardev", OtI2CHostProxyState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 /*
@@ -343,7 +342,7 @@ static bool ot_i2c_host_proxy_match_and_add(
     return false;
 }
 
-static void ot_i2c_host_proxy_class_init(ObjectClass *klass, void *data)
+static void ot_i2c_host_proxy_class_init(ObjectClass *klass, const void *data)
 {
     (void)data;
     DeviceClass *dc = DEVICE_CLASS(klass);

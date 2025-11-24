@@ -1,13 +1,13 @@
 # QEMU OpenTitan README
 
-[![.github/workflows/build_test.yaml](https://github.com/lowRISC/qemu/actions/workflows/build_test.yaml/badge.svg?branch=ot-earlgrey-9.2.0)](https://github.com/lowRISC/qemu/actions/workflows/build_test.yaml)
+[![.github/workflows/build_test.yaml](https://github.com/lowRISC/qemu/actions/workflows/build_test.yaml/badge.svg?branch=ot-10.1.0)](https://github.com/lowRISC/qemu/actions/workflows/build_test.yaml)
 
 QEMU is a generic and open source machine & userspace emulator and virtualizer.
 
 QEMU is capable of emulating a complete machine in software without any need for hardware
 virtualization support. By using dynamic translation, it achieves very good performance.
 
-This branch contains a fork of QEMU 9.2.0 dedicated to support lowRISC Ibex platforms:
+This branch contains a fork of QEMU 10.1.0 dedicated to support lowRISC Ibex platforms:
   * [OpenTitan](https://opentitan.org) [EarlGrey](docs/opentitan/earlgrey.md), based on
     [1.0.0](https://github.com/lowRISC/opentitan/tree/earlgrey_1.0.0).
   * [OpenTitan](https://opentitan.org) [Darjeeling](docs/opentitan/darjeeling.md), based on

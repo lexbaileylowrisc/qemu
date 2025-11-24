@@ -861,12 +861,11 @@ static void ot_soc_dbg_ctrl_jtag_write(void *opaque, hwaddr addr,
     }
 }
 
-static Property ot_soc_dbg_ctrl_properties[] = {
+static const Property ot_soc_dbg_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCDbgCtrlState, ot_id),
     DEFINE_PROP_LINK("lc-ctrl", OtSoCDbgCtrlState, lc_ctrl, TYPE_OT_LC_CTRL,
                      OtLcCtrlState *),
     DEFINE_PROP_BOOL("dft-ignore", OtSoCDbgCtrlState, dft_ignore, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_soc_dbg_ctrl_core_ops = {
@@ -977,7 +976,7 @@ static void ot_soc_dbg_ctrl_init(Object *obj)
     s->fsm_tick_bh = qemu_bh_new(&ot_soc_dbg_ctrl_fsm_tick, s);
 }
 
-static void ot_soc_dbg_ctrl_class_init(ObjectClass *klass, void *data)
+static void ot_soc_dbg_ctrl_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

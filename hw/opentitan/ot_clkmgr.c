@@ -1282,7 +1282,7 @@ static void ot_clkmgr_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_clkmgr_properties[] = {
+static const Property ot_clkmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtClkMgrState, ot_id),
     DEFINE_PROP_LINK("clock-src", OtClkMgrState, clock_src, TYPE_DEVICE,
                      DeviceState *),
@@ -1294,7 +1294,6 @@ static Property ot_clkmgr_properties[] = {
     DEFINE_PROP_STRING("swcg", OtClkMgrState, cfg_swcg),
     DEFINE_PROP_STRING("hint", OtClkMgrState, cfg_hint),
     DEFINE_PROP_UINT8("version", OtClkMgrState, version, UINT8_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_clkmgr_regs_ops = {
@@ -1397,7 +1396,7 @@ static void ot_clkmgr_init(Object *obj)
     }
 }
 
-static void ot_clkmgr_class_init(ObjectClass *klass, void *data)
+static void ot_clkmgr_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

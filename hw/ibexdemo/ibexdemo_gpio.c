@@ -159,12 +159,11 @@ static const MemoryRegionOps ibexdemo_gpio_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ibexdemo_gpio_properties[] = {
+static const Property ibexdemo_gpio_properties[] = {
     DEFINE_PROP_UINT32("in_count", IbexDemoGPIOState, in_count,
                        IBEXDEMO_GPIO_IN_MAX),
     DEFINE_PROP_UINT32("out_count", IbexDemoGPIOState, out_count,
                        IBEXDEMO_GPIO_IN_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ibexdemo_gpio_realize(DeviceState *dev, Error **errp)
@@ -196,7 +195,7 @@ static void ibexdemo_gpio_init(Object *obj)
                              IBEXDEMO_GPIO_OUT_MAX);
 }
 
-static void ibexdemo_gpio_class_init(ObjectClass *klass, void *data)
+static void ibexdemo_gpio_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

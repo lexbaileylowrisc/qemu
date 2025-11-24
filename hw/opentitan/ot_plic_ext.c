@@ -29,7 +29,6 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
-#include "exec/memory.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_plic_ext.h"
@@ -37,6 +36,7 @@
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
+#include "system/memory.h"
 #include "trace.h"
 
 /* clang-format off */
@@ -213,9 +213,8 @@ static void ot_plic_ext_alert_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
-static Property ot_plic_ext_properties[] = {
+static const Property ot_plic_ext_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtPlicExtState, ot_id),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_plic_ext_msip_ops = {
@@ -276,7 +275,7 @@ static void ot_plic_ext_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 }
 
-static void ot_plic_ext_class_init(ObjectClass *klass, void *data)
+static void ot_plic_ext_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

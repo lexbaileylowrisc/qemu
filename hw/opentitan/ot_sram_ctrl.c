@@ -669,7 +669,7 @@ static MemTxResult ot_sram_ctrl_mem_init_write_with_attrs(
     return MEMTX_OK;
 }
 
-static Property ot_sram_ctrl_properties[] = {
+static const Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSramCtrlState, ot_id),
     DEFINE_PROP_LINK("otp-ctrl", OtSramCtrlState, otp_ctrl, TYPE_OT_OTP_IF,
                      DeviceState *),
@@ -680,7 +680,6 @@ static Property ot_sram_ctrl_properties[] = {
     DEFINE_PROP_BOOL("ifetch", OtSramCtrlState, ifetch, false),
     DEFINE_PROP_BOOL("noinit", OtSramCtrlState, noinit, false),
     DEFINE_PROP_BOOL("noswitch", OtSramCtrlState, noswitch, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_sram_ctrl_regs_ops = {
@@ -864,7 +863,7 @@ static void ot_sram_ctrl_init(Object *obj)
 #endif
 }
 
-static void ot_sram_ctrl_class_init(ObjectClass *klass, void *data)
+static void ot_sram_ctrl_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

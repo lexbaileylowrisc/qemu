@@ -488,10 +488,6 @@ static void ot_pinmux_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_pinmux_dj_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static const MemoryRegionOps ot_pinmux_dj_regs_ops = {
     .read = &ot_pinmux_dj_regs_read,
     .write = &ot_pinmux_dj_regs_write,
@@ -552,12 +548,11 @@ static void ot_pinmux_dj_init(Object *obj)
                                 PAD_ATTR_ENABLE(false));
 }
 
-static void ot_pinmux_dj_class_init(ObjectClass *klass, void *data)
+static void ot_pinmux_dj_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_props(dc, ot_pinmux_dj_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);

@@ -21,10 +21,8 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qlist.h"
 #include "chardev/chardev-internal.h"
 #include "cpu.h"
-#include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/display/st7735.h"
 #include "hw/ibexdemo/ibexdemo_gpio.h"
@@ -42,7 +40,9 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibexdemo.h"
 #include "hw/ssi/ssi.h"
-#include "sysemu/sysemu.h"
+#include "qobject/qlist.h"
+#include "system/address-spaces.h"
+#include "system/system.h"
 
 /* ------------------------------------------------------------------------ */
 /* Forward Declarations */
@@ -402,12 +402,11 @@ static void ibexdemo_soc_init(Object *obj)
                             ARRAY_SIZE(ibexdemo_soc_devices), DEVICE(s));
 }
 
-static Property ibexdemo_soc_props[] = {
+static const Property ibexdemo_soc_props[] = {
     DEFINE_PROP_UINT32("resetvec", IbexDemoSoCState, resetvec, 0x00100080u),
-    DEFINE_PROP_END_OF_LIST()
 };
 
-static void ibexdemo_soc_class_init(ObjectClass *oc, void *data)
+static void ibexdemo_soc_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
@@ -478,7 +477,7 @@ static void ibexdemo_board_instance_init(Object *obj)
                               OBJECT(s->devices[IBEXDEMO_BOARD_DEV_SOC]));
 }
 
-static void ibexdemo_board_class_init(ObjectClass *oc, void *data)
+static void ibexdemo_board_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
@@ -514,7 +513,7 @@ static void ibexdemo_machine_init(MachineState *state)
     qdev_realize(dev, NULL, &error_fatal);
 }
 
-static void ibexdemo_machine_class_init(ObjectClass *oc, void *data)
+static void ibexdemo_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     (void)data;

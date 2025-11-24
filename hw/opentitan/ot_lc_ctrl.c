@@ -29,6 +29,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qemu/typedefs.h"
@@ -2185,7 +2186,7 @@ ot_lc_ctrl_get_soc_dbg_state(const OtLcCtrlState *s, unsigned state)
 }
 
 
-static Property ot_lc_ctrl_properties[] = {
+static const Property ot_lc_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtLcCtrlState, ot_id),
     DEFINE_PROP_LINK("otp-ctrl", OtLcCtrlState, otp_ctrl, TYPE_OT_OTP_IF,
                      DeviceState *),
@@ -2230,7 +2231,6 @@ static Property ot_lc_ctrl_properties[] = {
                      true),
     DEFINE_PROP_BOOL("decode_soc_dbg", OtLcCtrlState, decode_soc_dbg, false),
     DEFINE_PROP_UINT8("kmac-app", OtLcCtrlState, kmac_app, UINT8_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_lc_ctrl_sw_regs_ops = {
@@ -2405,7 +2405,7 @@ static void ot_lc_ctrl_init(Object *obj)
 #endif
 }
 
-static void ot_lc_ctrl_class_init(ObjectClass *klass, void *data)
+static void ot_lc_ctrl_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

@@ -44,7 +44,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/dma.h"
+#include "system/dma.h"
 #include "tomcrypt.h"
 #include "trace.h"
 
@@ -1364,7 +1364,7 @@ static void ot_dma_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_dma_properties[] = {
+static const Property ot_dma_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtDMAState, ot_id),
     DEFINE_PROP_STRING("ot_as_name", OtDMAState, ot_as_name),
     DEFINE_PROP_STRING("ctn_as_name", OtDMAState, ctn_as_name),
@@ -1375,7 +1375,6 @@ static Property ot_dma_properties[] = {
 #ifdef OT_DMA_HAS_ROLE
     DEFINE_PROP_UINT8("role", OtDMAState, role, UINT8_MAX),
 #endif
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_dma_regs_ops = {
@@ -1485,7 +1484,7 @@ static void ot_dma_init(Object *obj)
     s->timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_dma_transfer, s);
 }
 
-static void ot_dma_class_init(ObjectClass *klass, void *data)
+static void ot_dma_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

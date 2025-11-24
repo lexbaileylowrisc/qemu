@@ -1136,14 +1136,13 @@ static void ot_rom_ctrl_parse_hexstr(const char *name, uint8_t **buf,
     *buf = out;
 }
 
-static Property ot_rom_ctrl_properties[] = {
+static const Property ot_rom_ctrl_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtRomCtrlState, ot_id),
     DEFINE_PROP_UINT32("size", OtRomCtrlState, size, 0u),
     DEFINE_PROP_LINK("kmac", OtRomCtrlState, kmac, TYPE_OT_KMAC, OtKMACState *),
     DEFINE_PROP_UINT8("kmac-app", OtRomCtrlState, kmac_app, UINT8_MAX),
     DEFINE_PROP_STRING("nonce", OtRomCtrlState, nonce_xstr),
     DEFINE_PROP_STRING("key", OtRomCtrlState, key_xstr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_rom_ctrl_mem_ops = {
@@ -1291,7 +1290,7 @@ static void ot_rom_ctrl_init(Object *obj)
     s->hexstr = g_new0(char, OT_ROM_CTRL_HEXSTR_SIZE);
 }
 
-static void ot_rom_ctrl_class_init(ObjectClass *klass, void *data)
+static void ot_rom_ctrl_class_init(ObjectClass *klass, const void *data)
 {
     (void)data;
 

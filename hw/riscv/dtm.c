@@ -47,7 +47,7 @@
 #include "hw/registerfields.h"
 #include "hw/riscv/debug.h"
 #include "hw/riscv/dtm.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 /* clang-format off */
@@ -514,11 +514,10 @@ static void riscv_dtm_activate_dms(RISCVDTMState *s)
     }
 }
 
-static Property riscv_dtm_properties[] = {
+static const Property riscv_dtm_properties[] = {
     DEFINE_PROP_UINT32("abits", RISCVDTMState, abits, 0x7u),
     DEFINE_PROP_LINK("tap-ctrl", RISCVDTMState, tap_ctrl, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void riscv_dtm_reset_enter(Object *obj, ResetType type)
@@ -555,7 +554,7 @@ static void riscv_dtm_init(Object *obj)
     QLIST_INIT(&s->dms);
 }
 
-static void riscv_dtm_class_init(ObjectClass *klass, void *data)
+static void riscv_dtm_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

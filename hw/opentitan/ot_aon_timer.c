@@ -561,7 +561,7 @@ static const MemoryRegionOps ot_aon_timer_ops = {
     .impl.max_access_size = 4u,
 };
 
-static Property ot_aon_timer_properties[] = {
+static const Property ot_aon_timer_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAonTimerState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtAonTimerState,
                        clock_names[OT_AON_TIMER_CLOCK_SRC_IO]),
@@ -569,7 +569,6 @@ static Property ot_aon_timer_properties[] = {
                        clock_names[OT_AON_TIMER_CLOCK_SRC_AON]),
     DEFINE_PROP_LINK("clock-src", OtAonTimerState, clock_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_aon_timer_reset_enter(Object *obj, ResetType type)
@@ -645,7 +644,7 @@ static void ot_aon_timer_init(Object *obj)
     s->wdog_timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_aon_timer_wdog_cb, s);
 }
 
-static void ot_aon_timer_class_init(ObjectClass *klass, void *data)
+static void ot_aon_timer_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

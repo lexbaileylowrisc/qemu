@@ -66,7 +66,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "trace.h"
 
 /* set to use I/O to access the flash partition */
@@ -3174,7 +3174,7 @@ static uint64_t ot_flash_mem_read(void *opaque, hwaddr addr, unsigned size)
 };
 #endif /* #if DATA_PART_USE_IO_OPS */
 
-static Property ot_flash_properties[] = {
+static const Property ot_flash_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtFlashState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtFlashState, blk),
     DEFINE_PROP_LINK("vmapper", OtFlashState, vmapper, TYPE_OT_VMAPPER,
@@ -3183,7 +3183,6 @@ static Property ot_flash_properties[] = {
     regions and checking their config can slow down regular operation. */
     DEFINE_PROP_BOOL("no-mem-prot", OtFlashState, no_mem_prot, false),
     DEFINE_PROP_BOOL("fatal_escalate", OtFlashState, fatal_escalate, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_flash_regs_ops = {
@@ -3413,7 +3412,7 @@ static void ot_flash_init(Object *obj)
     s->hexstr = g_new0(char, OT_FLASH_HEXSTR_SIZE);
 }
 
-static void ot_flash_class_init(ObjectClass *klass, void *data)
+static void ot_flash_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

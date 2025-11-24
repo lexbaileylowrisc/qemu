@@ -34,7 +34,6 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
-#include "exec/memory.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
@@ -43,6 +42,7 @@
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
+#include "system/memory.h"
 #include "trace.h"
 
 
@@ -730,10 +730,9 @@ static MemTxResult ot_mbx_sys_regs_write_with_attrs(
     return MEMTX_OK;
 }
 
-static Property ot_mbx_properties[] = {
+static const Property ot_mbx_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtMbxState, ot_id),
     DEFINE_PROP_STRING("ram_as_name", OtMbxState, ram_as_name),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_mbx_host_regs_ops = {
@@ -827,7 +826,7 @@ static void ot_mbx_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->sys.mmio);
 }
 
-static void ot_mbx_class_init(ObjectClass *klass, void *data)
+static void ot_mbx_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

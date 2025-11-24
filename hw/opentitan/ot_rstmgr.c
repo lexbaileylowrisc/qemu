@@ -48,7 +48,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 #define PARAM_NUM_ALERTS 2u
@@ -566,11 +566,10 @@ static void ot_rstmgr_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_rstmgr_properties[] = {
+static const Property ot_rstmgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtRstMgrState, ot_id),
     DEFINE_PROP_UINT32("fatal_reset", OtRstMgrState, fatal_reset, 0),
     DEFINE_PROP_UINT8("version", OtRstMgrState, version, UINT8_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_rstmgr_regs_ops = {
@@ -685,7 +684,7 @@ static void ot_rstmgr_init(Object *obj)
     s->bus_reset_bh = qemu_bh_new(&ot_rstmgr_reset_bus, s);
 }
 
-static void ot_rstmgr_class_init(ObjectClass *klass, void *data)
+static void ot_rstmgr_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

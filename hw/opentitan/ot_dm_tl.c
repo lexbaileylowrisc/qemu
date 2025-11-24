@@ -27,7 +27,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "exec/memory.h"
 #include "hw/opentitan/ot_address_space.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_dm_tl.h"
@@ -35,6 +34,7 @@
 #include "hw/riscv/debug.h"
 #include "hw/riscv/dtm.h"
 #include "hw/sysbus.h"
+#include "system/memory.h"
 #include "trace.h"
 
 /** Debug Module */
@@ -134,7 +134,7 @@ static uint32_t ot_dm_tl_read_value(RISCVDebugDeviceState *dev)
     return value;
 }
 
-static Property ot_dm_tl_properties[] = {
+static const Property ot_dm_tl_properties[] = {
     DEFINE_PROP_LINK("dtm", OtDMTLState, dtm, TYPE_RISCV_DTM, RISCVDTMState *),
     DEFINE_PROP_UINT32("dmi_addr", OtDMTLState, dmi_addr, 0),
     DEFINE_PROP_UINT32("dmi_size", OtDMTLState, dmi_size, 0),
@@ -144,7 +144,6 @@ static Property ot_dm_tl_properties[] = {
                      SysBusDevice *),
     DEFINE_PROP_BOOL("enable", OtDMTLState, enable, true),
     DEFINE_PROP_UINT8("role", OtDMTLState, role, UINT8_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_dm_tl_reset_exit(Object *obj, ResetType type)
@@ -210,7 +209,7 @@ static void ot_dm_tl_init(Object *obj)
     (void)s;
 }
 
-static void ot_dm_tl_class_init(ObjectClass *klass, void *data)
+static void ot_dm_tl_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

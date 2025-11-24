@@ -386,12 +386,11 @@ static const MemoryRegionOps ot_timer_ops = {
     .impl.max_access_size = 4u,
 };
 
-static Property ot_timer_properties[] = {
+static const Property ot_timer_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtTimerState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtTimerState, clock_name),
     DEFINE_PROP_LINK("clock-src", OtTimerState, clock_src, TYPE_DEVICE,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_timer_reset_enter(Object *obj, ResetType type)
@@ -452,7 +451,7 @@ static void ot_timer_init(Object *obj)
     s->timer = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_timer_cb, s);
 }
 
-static void ot_timer_class_init(ObjectClass *klass, void *data)
+static void ot_timer_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

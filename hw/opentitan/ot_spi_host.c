@@ -1436,7 +1436,7 @@ static const MemoryRegionOps ot_spi_host_ops = {
 };
 /* clang-format on */
 
-static Property ot_spi_host_properties[] = {
+static const Property ot_spi_host_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSPIHostState, ot_id),
     DEFINE_PROP_UINT32("num-cs", OtSPIHostState, num_cs, 1u),
     DEFINE_PROP_UINT32("bus-num", OtSPIHostState, bus_num, 0u),
@@ -1448,7 +1448,6 @@ static Property ot_spi_host_properties[] = {
     DEFINE_PROP_UINT32("completion-delay", OtSPIHostState, completion_delay_ns,
                        0),
     DEFINE_PROP_UINT8("version", OtSPIHostState, version, 0),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_spi_host_reset_enter(Object *obj, ResetType type)
@@ -1562,7 +1561,7 @@ static void ot_spi_host_instance_init(Object *obj)
     s->fsm_delay = timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_host_schedule_fsm, s);
 }
 
-static void ot_spi_host_class_init(ObjectClass *klass, void *data)
+static void ot_spi_host_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

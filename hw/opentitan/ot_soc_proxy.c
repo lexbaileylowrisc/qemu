@@ -33,7 +33,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
-#include "exec/memory.h"
 #include "hw/opentitan/ot_alert.h"
 #include "hw/opentitan/ot_common.h"
 #include "hw/opentitan/ot_soc_proxy.h"
@@ -41,6 +40,7 @@
 #include "hw/registerfields.h"
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
+#include "system/memory.h"
 #include "trace.h"
 
 #define PARAM_NUM_EXTERNAL_IRQS 32u
@@ -227,9 +227,8 @@ static void ot_soc_proxy_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 }
 
-static Property ot_soc_proxy_properties[] = {
+static const Property ot_soc_proxy_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSoCProxyState, ot_id),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_soc_proxy_regs_ops = {
@@ -283,7 +282,7 @@ static void ot_soc_proxy_init(Object *obj)
                                         NULL, INTR_COUNT);
 }
 
-static void ot_soc_proxy_class_init(ObjectClass *klass, void *data)
+static void ot_soc_proxy_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

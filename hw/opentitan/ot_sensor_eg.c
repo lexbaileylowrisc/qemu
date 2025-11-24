@@ -383,10 +383,6 @@ static void ot_sensor_eg_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_sensor_eg_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static const MemoryRegionOps ot_sensor_eg_regs_ops = {
     .read = &ot_sensor_eg_regs_read,
     .write = &ot_sensor_eg_regs_write,
@@ -436,12 +432,11 @@ static void ot_sensor_eg_init(Object *obj)
     }
 }
 
-static void ot_sensor_eg_class_init(ObjectClass *klass, void *data)
+static void ot_sensor_eg_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;
 
-    device_class_set_props(dc, ot_sensor_eg_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 
     ResettableClass *rc = RESETTABLE_CLASS(klass);

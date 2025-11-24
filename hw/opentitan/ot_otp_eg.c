@@ -1166,7 +1166,7 @@ static void ot_otp_eg_init(Object *obj)
                                 &s->mmio.sub.swcfg);
 }
 
-static void ot_otp_eg_class_init(ObjectClass *klass, void *data)
+static void ot_otp_eg_class_init(ObjectClass *klass, const void *data)
 {
     (void)data;
 

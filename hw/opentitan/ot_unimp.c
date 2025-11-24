@@ -221,7 +221,7 @@ static const MemoryRegionOps ot_unimp_ops = {
 };
 /* clang-format on */
 
-static Property ot_unimp_properties[] = {
+static const Property ot_unimp_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtUnimpState, ot_id),
     DEFINE_PROP_UINT32("size", OtUnimpState, size, 0),
     DEFINE_PROP_UINT32("irq-ro-mask", OtUnimpState, irq_ro_mask, 0),
@@ -229,7 +229,6 @@ static Property ot_unimp_properties[] = {
     DEFINE_PROP_UINT8("alert-count", OtUnimpState, alert_count, 0),
     DEFINE_PROP_BOOL("warn-once", OtUnimpState, warn_once, false),
     DEFINE_PROP_BOOL("no-store", OtUnimpState, no_store, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_unimp_reset_enter(Object *obj, ResetType type)
@@ -289,7 +288,7 @@ static void ot_unimp_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->mmio);
 }
 
-static void ot_unimp_class_init(ObjectClass *klass, void *data)
+static void ot_unimp_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

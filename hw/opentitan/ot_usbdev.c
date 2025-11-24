@@ -2743,7 +2743,7 @@ static void ot_usbdev_chr_cmd_receive(void *opaque, const uint8_t *buf,
 /*
  * QEMU Initialization
  */
-static Property ot_usbdev_properties[] = {
+static const Property ot_usbdev_properties[] = {
     DEFINE_PROP_STRING("ot_id", OtUsbdevState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtUsbdevState, usbclk_name),
     DEFINE_PROP_STRING("clock-name-aon", OtUsbdevState, aonclk_name),
@@ -2761,7 +2761,6 @@ static Property ot_usbdev_properties[] = {
     DEFINE_PROP_CHR("chardev-usb", OtUsbdevState, usb_chr),
     /* VBUS control mode. */
     DEFINE_PROP_BOOL("vbus-override", OtUsbdevState, vbus_override, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_usbdev_ops = {
@@ -2890,7 +2889,7 @@ static void ot_usbdev_init(Object *obj)
                   &ot_usbdev_frame_timer_expired, s);
 }
 
-static void ot_usbdev_class_init(ObjectClass *klass, void *data)
+static void ot_usbdev_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

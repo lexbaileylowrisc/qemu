@@ -988,7 +988,7 @@ static void ot_alert_fill_access_table(OtAlertState *s)
     g_assert(offset == s->reg_count);
 }
 
-static Property ot_alert_properties[] = {
+static const Property ot_alert_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAlertState, ot_id),
     DEFINE_PROP_UINT16("n_alerts", OtAlertState, n_alerts, 0),
     DEFINE_PROP_UINT8("n_lpg", OtAlertState, n_low_power_groups, 1u),
@@ -1001,7 +1001,6 @@ static Property ot_alert_properties[] = {
                      DeviceState *),
     DEFINE_PROP_LINK("edn", OtAlertState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_UINT8("edn-ep", OtAlertState, edn_ep, UINT8_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_alert_regs_ops = {
@@ -1212,7 +1211,7 @@ static void ot_alert_realize(DeviceState *dev, Error **errp)
     ot_alert_fill_access_table(s);
 }
 
-static void ot_alert_class_init(ObjectClass *klass, void *data)
+static void ot_alert_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

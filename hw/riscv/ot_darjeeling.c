@@ -25,8 +25,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qlist.h"
-#include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/core/split-irq.h"
 #include "hw/intc/sifive_plic.h"
@@ -79,10 +77,12 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ot_darjeeling.h"
 #include "hw/ssi/ssi.h"
-#include "sysemu/blockdev.h"
-#include "sysemu/hw_accel.h"
-#include "sysemu/reset.h"
-#include "sysemu/sysemu.h"
+#include "qobject/qlist.h"
+#include "system/address-spaces.h"
+#include "system/blockdev.h"
+#include "system/hw_accel.h"
+#include "system/reset.h"
+#include "system/system.h"
 
 /* ------------------------------------------------------------------------ */
 /* Forward Declarations */
@@ -1883,7 +1883,7 @@ static void ot_dj_soc_init(Object *obj)
                             1);
 }
 
-static void ot_dj_soc_class_init(ObjectClass *oc, void *data)
+static void ot_dj_soc_class_init(ObjectClass *oc, const void *data)
 {
     OtDjSoCClass *sc = RISCV_OT_DJ_SOC_CLASS(oc);
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -1996,7 +1996,7 @@ static void ot_dj_board_init(Object *obj)
     s->devices[OT_DJ_BOARD_DEV_DEV_PROXY] = qdev_new(TYPE_OT_DEV_PROXY);
 }
 
-static void ot_dj_board_class_init(ObjectClass *oc, void *data)
+static void ot_dj_board_class_init(ObjectClass *oc, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     (void)data;
@@ -2127,7 +2127,7 @@ static void ot_dj_machine_init(MachineState *state)
     qdev_realize(dev, NULL, &error_fatal);
 }
 
-static void ot_dj_machine_class_init(ObjectClass *oc, void *data)
+static void ot_dj_machine_class_init(ObjectClass *oc, const void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     (void)data;

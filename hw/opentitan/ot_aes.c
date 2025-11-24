@@ -1343,7 +1343,7 @@ static void ot_aes_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_aes_properties[] = {
+static const Property ot_aes_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtAESState, ot_id),
     DEFINE_PROP_STRING("clock-name", OtAESState, clock_name),
     DEFINE_PROP_LINK("clock-src", OtAESState, clock_src, TYPE_DEVICE,
@@ -1356,7 +1356,6 @@ static Property ot_aes_properties[] = {
      * cases, using fast-mode reduces latency and increase AES throughput
      */
     DEFINE_PROP_BOOL("fast-mode", OtAESState, fast_mode, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_aes_regs_ops = {
@@ -1486,7 +1485,7 @@ static void ot_aes_init(Object *obj)
 #endif
 }
 
-static void ot_aes_class_init(ObjectClass *klass, void *data)
+static void ot_aes_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

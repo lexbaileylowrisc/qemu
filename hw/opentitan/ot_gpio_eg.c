@@ -40,7 +40,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 #define PARAM_NUM_ALERTS 1u
@@ -694,14 +694,13 @@ static const MemoryRegionOps ot_gpio_eg_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static Property ot_gpio_eg_properties[] = {
+static const Property ot_gpio_eg_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtGpioEgState, ot_id),
     DEFINE_PROP_UINT32("in", OtGpioEgState, reset_in, 0u),
     DEFINE_PROP_UINT32("out", OtGpioEgState, reset_out, 0u),
     DEFINE_PROP_UINT32("oe", OtGpioEgState, reset_oe, 0u),
     DEFINE_PROP_BOOL("wipe", OtGpioEgState, wipe, false),
     DEFINE_PROP_CHR("chardev", OtGpioEgState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_gpio_eg_reset_enter(Object *obj, ResetType type)
@@ -809,7 +808,7 @@ static void ot_gpio_eg_init(Object *obj)
     s->data_bi = UINT32_MAX;
 }
 
-static void ot_gpio_eg_class_init(ObjectClass *klass, void *data)
+static void ot_gpio_eg_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

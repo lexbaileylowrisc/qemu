@@ -2324,7 +2324,7 @@ static void ot_keymgr_configure_constants(OtKeyMgrState *s)
     }
 }
 
-static Property ot_keymgr_properties[] = {
+static const Property ot_keymgr_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKeyMgrState, ot_id),
     DEFINE_PROP_LINK("edn", OtKeyMgrState, edn.device, TYPE_OT_EDN,
                      OtEDNState *),
@@ -2369,7 +2369,6 @@ static Property ot_keymgr_properties[] = {
                      use_default_entropy_seed, false),
     DEFINE_PROP_BOOL("disable-flash-seed-check", OtKeyMgrState,
                      disable_flash_seed_check, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_keymgr_regs_ops = {
@@ -2529,7 +2528,7 @@ static void ot_keymgr_init(Object *obj)
     s->hexstr = g_new0(char, OT_KEYMGR_HEXSTR_SIZE);
 }
 
-static void ot_keymgr_class_init(ObjectClass *klass, void *data)
+static void ot_keymgr_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

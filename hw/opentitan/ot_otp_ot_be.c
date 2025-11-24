@@ -220,7 +220,7 @@ ot_otp_ot_be_get_characteristics(OtOtpBeIf *beif)
     return &s->characteristics;
 }
 
-static Property ot_otp_ot_be_properties[] = {
+static const Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOtpOtBeState, ot_id),
     DEFINE_PROP_LINK("parent", OtOtpOtBeState, parent, TYPE_DEVICE,
                      DeviceState *),
@@ -230,7 +230,6 @@ static Property ot_otp_ot_be_properties[] = {
     DEFINE_PROP_UINT32("read_ns", OtOtpOtBeState,
                        characteristics.timings.read_ns,
                        OTP_BE_CHARACTERISTICS.timings.read_ns),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_otp_ot_be_ops = {
@@ -262,7 +261,7 @@ static void ot_otp_ot_be_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->prim_mr);
 }
 
-static void ot_otp_ot_be_class_init(ObjectClass *klass, void *data)
+static void ot_otp_ot_be_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

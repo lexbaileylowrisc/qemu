@@ -206,7 +206,7 @@ static void ot_rom_img_complete(UserCreatable *uc, Error **errp)
     }
 }
 
-static void ot_rom_img_class_init(ObjectClass *oc, void *data)
+static void ot_rom_img_class_init(ObjectClass *oc, const void *data)
 {
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
     (void)data;

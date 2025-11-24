@@ -45,7 +45,7 @@
 #include "hw/opentitan/ot_pwrmgr.h"
 #include "hw/qdev-properties-system.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/block-backend.h"
+#include "system/block-backend.h"
 #include "trace.h"
 
 /*
@@ -2620,7 +2620,7 @@ static void ot_otp_engine_add_scramble_key_props(OtOTPEngineState *s)
         prop->offset =
             (intptr_t)&s->otp_scramble_key_xstrs[secret_ix] - (intptr_t)s;
 
-        object_property_add(OBJECT(s), prop->name, prop->info->name,
+        object_property_add(OBJECT(s), prop->name, prop->info->type,
                             prop->info->get, prop->info->set,
                             prop->info->release, prop);
 
@@ -2688,13 +2688,13 @@ static void ot_otp_engine_add_inv_def_props(OtOTPEngineState *s)
         prop->offset =
             (intptr_t)&s->inv_default_part_xstrs[part_ix] - (intptr_t)s;
 
-        object_property_add(OBJECT(s), prop->name, prop->info->name,
+        object_property_add(OBJECT(s), prop->name, prop->info->type,
                             prop->info->get, prop->info->set,
                             prop->info->release, prop);
     }
 }
 
-static Property ot_otp_engine_properties[] = {
+static const Property ot_otp_engine_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtOTPEngineState, ot_id),
     DEFINE_PROP_DRIVE("drive", OtOTPEngineState, blk),
     DEFINE_PROP_LINK("backend", OtOTPEngineState, otp_backend,
@@ -2713,7 +2713,6 @@ static Property ot_otp_engine_properties[] = {
                        flash_addr_const_xstr),
     DEFINE_PROP_STRING("flash_addr_iv", OtOTPEngineState, flash_addr_iv_xstr),
     DEFINE_PROP_BOOL("fatal_escalate", OtOTPEngineState, fatal_escalate, false),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_otp_engine_reset_enter(Object *obj, ResetType type)
@@ -2928,7 +2927,7 @@ static void ot_otp_engine_init(Object *obj)
 #endif
 }
 
-static void ot_otp_engine_class_init(ObjectClass *klass, void *data)
+static void ot_otp_engine_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

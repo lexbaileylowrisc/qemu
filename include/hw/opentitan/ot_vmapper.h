@@ -30,7 +30,7 @@
 
 #include "qom/object.h"
 #include "exec/hwaddr.h"
-#include "exec/memory.h"
+#include "system/memory.h"
 
 #define TYPE_OT_VMAPPER "ot-vmapper"
 OBJECT_DECLARE_TYPE(OtVMapperState, OtVMapperClass, OT_VMAPPER)

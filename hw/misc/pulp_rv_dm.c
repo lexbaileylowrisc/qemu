@@ -530,7 +530,7 @@ static void pulp_rv_dm_init(Object *obj)
     ibex_qdev_init_irq(obj, &s->alert, OT_DEVICE_ALERT);
 }
 
-static void pulp_rv_dm_class_init(ObjectClass *klass, void *data)
+static void pulp_rv_dm_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

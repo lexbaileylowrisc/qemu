@@ -469,12 +469,11 @@ static void ot_ast_dj_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_ast_dj_properties[] = {
+static const Property ot_ast_dj_properties[] = {
     DEFINE_PROP_STRING("topclocks", OtASTDjState, cfg_topclocks),
     DEFINE_PROP_STRING("aonclocks", OtASTDjState, cfg_aonclocks),
     DEFINE_PROP_UINT32("noise-bitrate", OtASTDjState, noise_bitrate,
                        OT_AST_DJ_NOISE_BITRATE_DEFAULT),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_ast_dj_regs_ops = {
@@ -571,7 +570,7 @@ static void ot_ast_dj_init(Object *obj)
     s->regsb = g_new0(uint32_t, REGSB_COUNT);
 }
 
-static void ot_ast_dj_class_init(ObjectClass *klass, void *data)
+static void ot_ast_dj_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

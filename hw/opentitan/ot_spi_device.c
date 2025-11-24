@@ -2831,12 +2831,11 @@ static int ot_spi_device_chr_be_change(void *opaque)
     return 0;
 }
 
-static Property ot_spi_device_properties[] = {
+static const Property ot_spi_device_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtSPIDeviceState, ot_id),
     DEFINE_PROP_CHR("chardev", OtSPIDeviceState, chr),
     DEFINE_PROP_LINK("spi-host", OtSPIDeviceState, spi_host, TYPE_OT_SPI_HOST,
                      OtSPIHostState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_spi_device_spi_regs_ops = {
@@ -2976,7 +2975,7 @@ static void ot_spi_device_init(Object *obj)
         timer_new_ns(OT_VIRTUAL_CLOCK, &ot_spi_device_flash_resume_read, s);
 }
 
-static void ot_spi_device_class_init(ObjectClass *klass, void *data)
+static void ot_spi_device_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

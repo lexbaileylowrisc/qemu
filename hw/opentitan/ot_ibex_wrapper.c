@@ -58,7 +58,7 @@
 #include "hw/riscv/ibex_common.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 /* DEBUG: define to print the full memory view on remap */
@@ -1383,7 +1383,7 @@ static void ot_ibex_wrapper_fill_tables(OtIbexWrapperState *s)
 }
 
 /* all properties are optional */
-static Property ot_ibex_wrapper_properties[] = {
+static const Property ot_ibex_wrapper_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtIbexWrapperState, ot_id),
     DEFINE_PROP_LINK("edn", OtIbexWrapperState, edn, TYPE_OT_EDN, OtEDNState *),
     DEFINE_PROP_LINK("vmapper", OtIbexWrapperState, vmapper, TYPE_OT_VMAPPER,
@@ -1397,7 +1397,6 @@ static Property ot_ibex_wrapper_properties[] = {
     DEFINE_PROP_UINT8("qemu_version", OtIbexWrapperState, qemu_version, 0),
     DEFINE_PROP_STRING("lc-ignore-ids", OtIbexWrapperState, lc_ignore_ids),
     DEFINE_PROP_CHR("logdev", OtIbexWrapperState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_ibex_wrapper_regs_ops = {
@@ -1538,7 +1537,7 @@ static void ot_ibex_wrapper_init(Object *obj)
     s->log_engine = g_new0(OtIbexTestLogEngine, 1u);
 }
 
-static void ot_ibex_wrapper_class_init(ObjectClass *klass, void *data)
+static void ot_ibex_wrapper_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

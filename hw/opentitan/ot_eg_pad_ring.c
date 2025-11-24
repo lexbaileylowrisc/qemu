@@ -92,9 +92,8 @@ static void ot_eg_pad_ring_por_update(OtEgPadRingState *s)
     ibex_irq_set(&s->por, OT_RSTMGR_RESET_POR);
 }
 
-static Property ot_eg_pad_ring_properties[] = {
+static const Property ot_eg_pad_ring_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtEgPadRingState, ot_id),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_eg_pad_ring_reset_enter(Object *obj, ResetType type)
@@ -165,7 +164,7 @@ static void ot_eg_pad_ring_init(Object *obj)
     }
 }
 
-static void ot_eg_pad_ring_class_init(ObjectClass *klass, void *data)
+static void ot_eg_pad_ring_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

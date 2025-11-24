@@ -51,8 +51,8 @@
 #include "qemu/log.h"
 #include "qemu/typedefs.h"
 #include "qapi/error.h"
+#include "accel/tcg/cpu-ldst.h"
 #include "disas/dis-asm.h"
-#include "exec/cpu_ldst.h"
 #include "hw/boards.h"
 #include "hw/core/cpu.h"
 #include "hw/jtag/tap_ctrl.h"
@@ -61,8 +61,8 @@
 #include "hw/riscv/debug.h"
 #include "hw/riscv/dm.h"
 #include "hw/riscv/dtm.h"
-#include "sysemu/hw_accel.h"
-#include "sysemu/runstate.h"
+#include "system/hw_accel.h"
+#include "system/runstate.h"
 #include "target/riscv/cpu.h"
 #include "trace.h"
 
@@ -255,7 +255,7 @@ static_assert((A_LAST - A_FIRST) < 64u, "too many registers");
                                    get_riscv_debug_reg_name(_reg_), \
                                    (_reg_) - (_off_));
 
-#define RISCVDM_DEFAULT_MTA 0x1ull /* "MEMTXATTRS_UNSPECIFIED" */
+#define RISCVDM_DEFAULT_MTA 0x100000000ull /* "MEMTXATTRS_UNSPECIFIED" */
 
 /*
  * Type definitions
@@ -2539,7 +2539,7 @@ static int riscv_dm_discover_cpus(RISCVDMState *dm)
     return hartix ? 0 : -1;
 }
 
-static Property riscv_dm_properties[] = {
+static const Property riscv_dm_properties[] = {
     DEFINE_PROP_LINK("dtm", RISCVDMState, dtm, TYPE_RISCV_DTM, RISCVDTMState *),
     DEFINE_PROP_ARRAY("hart", RISCVDMState, hart_count, cpu_idx,
                       qdev_prop_uint32, uint32_t),
@@ -2563,7 +2563,6 @@ static Property riscv_dm_properties[] = {
     DEFINE_PROP_UINT64("mta_sba", RISCVDMState, cfg.mta_sba,
                        RISCVDM_DEFAULT_MTA),
     DEFINE_PROP_BOOL("enable", RISCVDMState, cfg.enable, true),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void riscv_dm_reset_enter(Object *obj, ResetType type)
@@ -2749,7 +2748,7 @@ static void riscv_dm_realize(DeviceState *dev, Error **errp)
     dm->mta_sba = ((RISCVDMMemAttrs){ .value = dm->cfg.mta_sba }).attrs;
 }
 
-static void riscv_dm_class_init(ObjectClass *klass, void *data)
+static void riscv_dm_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

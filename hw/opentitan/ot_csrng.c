@@ -1937,12 +1937,11 @@ static void ot_csrng_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_csrng_properties[] = {
+static const Property ot_csrng_properties[] = {
     DEFINE_PROP_LINK("entropy-src", OtCSRNGState, entropy_src,
                      TYPE_OT_ENTROPY_SRC, OtEntropySrcState *),
     DEFINE_PROP_LINK("otp-ctrl", OtCSRNGState, otp_ctrl, TYPE_OT_OTP_IF,
                      DeviceState *),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_csrng_regs_ops = {
@@ -2068,7 +2067,7 @@ static void ot_csrng_init(Object *obj)
     QSIMPLEQ_INIT(&s->cmd_requests);
 }
 
-static void ot_csrng_class_init(ObjectClass *klass, void *data)
+static void ot_csrng_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

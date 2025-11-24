@@ -42,7 +42,7 @@
 #include "hw/riscv/ibex_gpio.h"
 #include "hw/riscv/ibex_irq.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 #define PARAM_NUM_ALERTS 1u
@@ -798,7 +798,7 @@ static const MemoryRegionOps ot_gpio_dj_regs_ops = {
     .impl.max_access_size = 4u,
 };
 
-static Property ot_gpio_dj_properties[] = {
+static const Property ot_gpio_dj_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtGpioDjState, ot_id),
     DEFINE_PROP_STRING("log_id", OtGpioDjState, log_id),
     DEFINE_PROP_UINT32("in", OtGpioDjState, reset_in, 0u),
@@ -808,7 +808,6 @@ static Property ot_gpio_dj_properties[] = {
     DEFINE_PROP_UINT32("ibex_out", OtGpioDjState, ibex_out, 0u),
     DEFINE_PROP_BOOL("wipe", OtGpioDjState, wipe, false),
     DEFINE_PROP_CHR("chardev", OtGpioDjState, chr),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void ot_gpio_dj_reset_enter(Object *obj, ResetType type)
@@ -926,7 +925,7 @@ static void ot_gpio_dj_init(Object *obj)
     s->io_state = IO_IDLE;
 }
 
-static void ot_gpio_dj_class_init(ObjectClass *klass, void *data)
+static void ot_gpio_dj_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

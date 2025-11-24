@@ -2003,7 +2003,7 @@ static void ot_keymgr_dpe_configure_constants(OtKeyMgrDpeState *s)
     }
 }
 
-static Property ot_keymgr_dpe_properties[] = {
+static const Property ot_keymgr_dpe_properties[] = {
     DEFINE_PROP_STRING(OT_COMMON_DEV_ID, OtKeyMgrDpeState, ot_id),
     DEFINE_PROP_LINK("edn", OtKeyMgrDpeState, edn.device, TYPE_OT_EDN,
                      OtEDNState *),
@@ -2041,7 +2041,6 @@ static Property ot_keymgr_dpe_properties[] = {
                        seed_xstrs[KEYMGR_DPE_SEED_REV]),
     DEFINE_PROP_STRING("soft_output_seed", OtKeyMgrDpeState,
                        seed_xstrs[KEYMGR_DPE_SEED_SW_OUT]),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_keymgr_dpe_regs_ops = {
@@ -2185,7 +2184,7 @@ static void ot_keymgr_dpe_init(Object *obj)
     s->hexstr = g_new0(char, OT_KEYMGR_DPE_HEXSTR_SIZE);
 }
 
-static void ot_keymgr_dpe_class_init(ObjectClass *klass, void *data)
+static void ot_keymgr_dpe_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

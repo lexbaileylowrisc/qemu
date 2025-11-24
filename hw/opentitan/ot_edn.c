@@ -1477,11 +1477,10 @@ static void ot_edn_regs_write(void *opaque, hwaddr addr, uint64_t val64,
     }
 };
 
-static Property ot_edn_properties[] = {
+static const Property ot_edn_properties[] = {
     DEFINE_PROP_LINK("csrng", OtEDNState, rng.device, TYPE_OT_CSRNG,
                      OtCSRNGState *),
     DEFINE_PROP_UINT32("csrng-app", OtEDNState, rng.appid, UINT32_MAX),
-    DEFINE_PROP_END_OF_LIST(),
 };
 
 static const MemoryRegionOps ot_edn_regs_ops = {
@@ -1569,7 +1568,7 @@ static void ot_edn_init(Object *obj)
     QSIMPLEQ_INIT(&s->ep_requests);
 }
 
-static void ot_edn_class_init(ObjectClass *klass, void *data)
+static void ot_edn_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     (void)data;

@@ -31,7 +31,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/registerfields.h"
 #include "hw/sysbus.h"
-#include "sysemu/runstate.h"
+#include "system/runstate.h"
 #include "trace.h"
 
 /* clang-format off */
@@ -95,10 +95,6 @@ static const MemoryRegionOps ibexdemo_simctrl_ops = {
     .impl.max_access_size = 4,
 };
 
-static Property ibexdemo_simctrl_properties[] = {
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void ibexdemo_simctrl_init(Object *obj)
 {
     IbexDemoSimCtrlState *s = IBEXDEMO_SIMCTRL(obj);
@@ -113,12 +109,11 @@ static void ibexdemo_simctrl_realize(DeviceState *dev, Error **errp)
     /* empty */
 }
 
-static void ibexdemo_simctrl_class_init(ObjectClass *klass, void *data)
+static void ibexdemo_simctrl_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = &ibexdemo_simctrl_realize;
-    device_class_set_props(dc, ibexdemo_simctrl_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
