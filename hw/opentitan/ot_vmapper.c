@@ -335,6 +335,10 @@ static int ot_vmapper_get_phy_addr(OtVMapperState *s, hwaddr *physical,
         return TRANSLATE_FAIL;
     }
 
+    if G_UNLIKELY (insn && !range->execute) {
+        return TRANSLATE_PMP_FAIL;
+    }
+
     hwaddr offset = addr - (hwaddr)range->start;
     *physical = range->dest + offset;
     *ret_prot = PAGE_READ | PAGE_WRITE | (range->execute ? PAGE_EXEC : 0);
