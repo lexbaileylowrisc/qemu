@@ -103,15 +103,17 @@ struct OtVMapperState {
 #define VMAP_TREE_KEY_TO_RANGE_END(_g_) ((uint32_t)(((uintptr_t)(_g_)) >> 32u))
 
 /*
- * order ranges for g_list_sort
+ * order ranges for g_list_sort_with_data
  *  1. by start address first,
  *  2. then by end address,
  *  3. then by priority (from higest to lowest)
  */
-static gint ot_vmapper_compare(gconstpointer a, gconstpointer b)
+static gint ot_vmapper_compare(gconstpointer a, gconstpointer b,
+                               gpointer user_data)
 {
     const OtRegionRange *ra = (const OtRegionRange *)a;
     const OtRegionRange *rb = (const OtRegionRange *)b;
+    (void)user_data;
 
     if (ra->start == rb->start) {
         if (ra->end == rb->end) {
@@ -835,7 +837,7 @@ static void ot_vmapper_update(OtVMapperState *s, bool insn)
 
         /* sort the list, in start address order (end address if start are
          * equal) */
-        rglist = g_list_sort(rglist, &ot_vmapper_compare);
+        rglist = g_list_sort_with_data(rglist, &ot_vmapper_compare, NULL);
 
         VMAP_SHOW_RANGE_LIST(s, insn, rglist, "sorted");
 
