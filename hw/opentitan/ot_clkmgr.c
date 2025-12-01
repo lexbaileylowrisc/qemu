@@ -427,6 +427,14 @@ static gint ot_clkmgr_compare_clock_by_name(gconstpointer a, gconstpointer b)
     return strcmp(ca->name, cb->name);
 }
 
+static gint ot_clkmgr_compare_clock_by_name_with_data(
+    gconstpointer a, gconstpointer b, gpointer user_data)
+{
+    (void)user_data;
+    return ot_clkmgr_compare_clock_by_name(a, b);
+}
+
+
 static OtClkMgrClock *ot_clkmgr_find_clock(GList *clock_list, const char *name)
 {
     OtClkMgrClock clk = { .name = (char *)name };
@@ -876,7 +884,9 @@ static void ot_clkmgr_sort_clocks(OtClkMgrState *s)
 
     g_list_foreach(s->clocks, &ot_clkmgr_add_clock, s);
 
-    s->ordered = g_list_sort(s->ordered, &ot_clkmgr_compare_clock_by_name);
+    s->ordered =
+        g_list_sort_with_data(s->ordered,
+                              &ot_clkmgr_compare_clock_by_name_with_data, NULL);
 }
 
 static gint ot_clkmgr_compare_swcg_by_name(gconstpointer a, gconstpointer b)
@@ -885,6 +895,13 @@ static gint ot_clkmgr_compare_swcg_by_name(gconstpointer a, gconstpointer b)
     const OtClkMgrSwCgClock *sb = b;
 
     return strcmp(sa->name, sb->name);
+}
+
+static gint ot_clkmgr_compare_swcg_by_name_with_data(
+    gconstpointer a, gconstpointer b, gpointer user_data)
+{
+    (void)user_data;
+    return ot_clkmgr_compare_swcg_by_name(a, b);
 }
 
 static GList *
@@ -934,7 +951,9 @@ static void ot_clkmgr_generate_swcg_clocks(OtClkMgrState *s)
         swcgs = ot_clkmgr_build_swcg_clock_name(s, swcgs, group, group->clocks);
     }
 
-    swcgs = g_list_sort(swcgs, &ot_clkmgr_compare_swcg_by_name);
+    swcgs =
+        g_list_sort_with_data(swcgs, &ot_clkmgr_compare_swcg_by_name_with_data,
+                              NULL);
 
     s->swcg_count = g_list_length(swcgs);
     s->swcgs = g_new0(OtClkMgrSwCgClock *, s->swcg_count);
