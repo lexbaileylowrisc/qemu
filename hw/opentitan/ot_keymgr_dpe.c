@@ -1004,12 +1004,19 @@ static void ot_keymgr_dpe_kdf_push_bytes(OtKeyMgrDpeState *s,
     s->kdf_buf.length += len;
 }
 
-static void ot_keymgr_dpe_dump_kdf_material(
-    OtKeyMgrDpeState *s, const char *what, const uint8_t *buf, size_t len)
+static void G_GNUC_PRINTF(4, 5)
+    ot_keymgr_dpe_dump_kdf_material(const OtKeyMgrDpeState *s,
+                                    const uint8_t *buf, size_t len,
+                                    const char *fmt, ...)
 {
     if (trace_event_get_state(TRACE_OT_KEYMGR_DPE_DUMP_KDF_MATERIAL)) {
+        va_list args;
+        va_start(args, fmt);
+        char *what = g_strdup_vprintf(fmt, args);
+        va_end(args);
         const char *hexstr = ot_keymgr_dpe_dump_bigint(s, buf, len);
         trace_ot_keymgr_dpe_dump_kdf_material(s->ot_id, what, hexstr);
+        g_free(what);
     }
 }
 
@@ -1019,7 +1026,7 @@ static void ot_keymgr_dpe_kdf_push_key_version(OtKeyMgrDpeState *s)
     stl_le_p(buf, s->regs[R_KEY_VERSION]);
     ot_keymgr_dpe_kdf_push_bytes(s, buf, sizeof(uint32_t));
 
-    ot_keymgr_dpe_dump_kdf_material(s, "KEY_VERSION", buf, sizeof(uint32_t));
+    ot_keymgr_dpe_dump_kdf_material(s, buf, sizeof(uint32_t), "KEY_VERSION");
 }
 
 static size_t
@@ -1035,8 +1042,8 @@ ot_keymgr_dpe_kdf_append_creator_seed(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
                                               OT_OTP_KEYMGR_SECRET_SIZE);
 
-    ot_keymgr_dpe_dump_kdf_material(s, "CREATOR_SEED", secret.secret,
-                                    OT_OTP_KEYMGR_SECRET_SIZE);
+    ot_keymgr_dpe_dump_kdf_material(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE,
+                                    "CREATOR_SEED");
     return OT_OTP_KEYMGR_SECRET_SIZE;
 }
 
@@ -1051,9 +1058,8 @@ static size_t ot_keymgr_dpe_kdf_append_rom_digest(
     ot_keymgr_dpe_kdf_push_bytes(s, rom_digest, OT_ROM_DIGEST_BYTES);
     *dvalid &= ot_keymgr_dpe_valid_data_check(rom_digest, OT_ROM_DIGEST_BYTES);
 
-    char buf[16u];
-    snprintf(buf, sizeof(buf), "ROM%u_DIGEST", rom_idx);
-    ot_keymgr_dpe_dump_kdf_material(s, buf, rom_digest, OT_ROM_DIGEST_BYTES);
+    ot_keymgr_dpe_dump_kdf_material(s, rom_digest, OT_ROM_DIGEST_BYTES,
+                                    "ROM%u_DIGEST", rom_idx);
 
     return OT_ROM_DIGEST_BYTES;
 }
@@ -1069,8 +1075,8 @@ static size_t ot_keymgr_dpe_kdf_append_km_div(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &=
         ot_keymgr_dpe_valid_data_check(km_div.data, OT_LC_KEYMGR_DIV_BYTES);
 
-    ot_keymgr_dpe_dump_kdf_material(s, "KM_DIV", km_div.data,
-                                    OT_LC_KEYMGR_DIV_BYTES);
+    ot_keymgr_dpe_dump_kdf_material(s, km_div.data, OT_LC_KEYMGR_DIV_BYTES,
+                                    "KM_DIV");
     return OT_LC_KEYMGR_DIV_BYTES;
 }
 
@@ -1085,8 +1091,8 @@ static size_t ot_keymgr_dpe_kdf_append_dev_id(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &= ot_keymgr_dpe_valid_data_check(hw_cfg->device_id,
                                               OT_OTP_HWCFG_DEVICE_ID_BYTES);
 
-    ot_keymgr_dpe_dump_kdf_material(s, "DEVICE_ID", hw_cfg->device_id,
-                                    OT_OTP_HWCFG_DEVICE_ID_BYTES);
+    ot_keymgr_dpe_dump_kdf_material(s, hw_cfg->device_id,
+                                    OT_OTP_HWCFG_DEVICE_ID_BYTES, "DEVICE_ID");
     return OT_OTP_HWCFG_DEVICE_ID_BYTES;
 }
 
@@ -1095,9 +1101,8 @@ static size_t ot_keymgr_dpe_kdf_append_rev_seed(OtKeyMgrDpeState *s)
     ot_keymgr_dpe_kdf_push_bytes(s, s->seeds[KEYMGR_DPE_SEED_REV],
                                  KEYMGR_DPE_SEED_BYTES);
 
-    ot_keymgr_dpe_dump_kdf_material(s, "REV_SEED",
-                                    s->seeds[KEYMGR_DPE_SEED_REV],
-                                    KEYMGR_DPE_SEED_BYTES);
+    ot_keymgr_dpe_dump_kdf_material(s, s->seeds[KEYMGR_DPE_SEED_REV],
+                                    KEYMGR_DPE_SEED_BYTES, "REV_SEED");
 
     return KEYMGR_DPE_SEED_BYTES;
 }
@@ -1115,8 +1120,8 @@ ot_keymgr_dpe_kdf_append_owner_seed(OtKeyMgrDpeState *s, bool *dvalid)
     *dvalid &= ot_keymgr_dpe_valid_data_check(secret.secret,
                                               OT_OTP_KEYMGR_SECRET_SIZE);
 
-    ot_keymgr_dpe_dump_kdf_material(s, "OWNER_SEED", secret.secret,
-                                    OT_OTP_KEYMGR_SECRET_SIZE);
+    ot_keymgr_dpe_dump_kdf_material(s, secret.secret, OT_OTP_KEYMGR_SECRET_SIZE,
+                                    "OWNER_SEED");
     return OT_OTP_KEYMGR_SECRET_SIZE;
 }
 
@@ -1187,8 +1192,9 @@ static void ot_keymgr_dpe_operation_advance(OtKeyMgrDpeState *s)
     ot_keymgr_dpe_kdf_push_bytes(s, s->sw_binding,
                                  NUM_SW_BINDING_REG * sizeof(uint32_t));
     expected_kdf_len += NUM_SW_BINDING_REG * sizeof(uint32_t);
-    ot_keymgr_dpe_dump_kdf_material(s, "SW_BINDING", s->sw_binding,
-                                    NUM_SW_BINDING_REG * sizeof(uint32_t));
+    ot_keymgr_dpe_dump_kdf_material(s, s->sw_binding,
+                                    NUM_SW_BINDING_REG * sizeof(uint32_t),
+                                    "SW_BINDING");
 
     /* check that we have pushed all expected KDF data*/
     g_assert(s->kdf_buf.length == expected_kdf_len);
@@ -1243,8 +1249,8 @@ static void ot_keymgr_dpe_operation_gen_output(OtKeyMgrDpeState *s, bool sw)
         uint8_t *output_key = sw ? s->seeds[KEYMGR_DPE_SEED_SW_OUT] :
                                    s->seeds[KEYMGR_DPE_SEED_HW_OUT];
         ot_keymgr_dpe_kdf_push_bytes(s, output_key, KEYMGR_DPE_SEED_BYTES);
-        ot_keymgr_dpe_dump_kdf_material(s, "OUT_KEY_SEED", output_key,
-                                        KEYMGR_DPE_SEED_BYTES);
+        ot_keymgr_dpe_dump_kdf_material(s, output_key, KEYMGR_DPE_SEED_BYTES,
+                                        "OUT_KEY_SEED");
 
         /* Destination Seed (AES/KMAC/OTBN/other) */
         uint8_t *dest_seed;
@@ -1264,14 +1270,15 @@ static void ot_keymgr_dpe_operation_gen_output(OtKeyMgrDpeState *s, bool sw)
             break;
         }
         ot_keymgr_dpe_kdf_push_bytes(s, dest_seed, KEYMGR_DPE_SEED_BYTES);
-        ot_keymgr_dpe_dump_kdf_material(s, "DEST_SEED", dest_seed,
-                                        KEYMGR_DPE_SEED_BYTES);
+        ot_keymgr_dpe_dump_kdf_material(s, dest_seed, KEYMGR_DPE_SEED_BYTES,
+                                        "DEST_SEED");
 
         /* Salt (software-provided via SALT_x registers) */
         ot_keymgr_dpe_kdf_push_bytes(s, s->salt,
                                      NUM_SALT_REG * sizeof(uint32_t));
-        ot_keymgr_dpe_dump_kdf_material(s, "SALT", s->salt,
-                                        NUM_SALT_REG * sizeof(uint32_t));
+        ot_keymgr_dpe_dump_kdf_material(s, s->salt,
+                                        NUM_SALT_REG * sizeof(uint32_t),
+                                        "SALT");
 
         /* Key Version (software-provided via KEY_VERSION register) */
         ot_keymgr_dpe_kdf_push_key_version(s);

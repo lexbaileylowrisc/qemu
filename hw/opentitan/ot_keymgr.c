@@ -1013,20 +1013,26 @@ static void ot_keymgr_kdf_push_bytes(OtKeyMgrState *s, const uint8_t *data,
     s->kdf_buf.length += len;
 }
 
-static void ot_keymgr_dump_kdf_material(
-    const OtKeyMgrState *s, const char *what, const uint8_t *buf, size_t len)
+static void G_GNUC_PRINTF(4, 5)
+    ot_keymgr_dump_kdf_material(const OtKeyMgrState *s, const uint8_t *buf,
+                                size_t len, const char *fmt, ...)
 {
     if (trace_event_get_state(TRACE_OT_KEYMGR_DUMP_KDF_MATERIAL)) {
+        va_list args;
+        va_start(args, fmt);
+        char *what = g_strdup_vprintf(fmt, args);
+        va_end(args);
         const char *hexstr = ot_keymgr_dump_bigint(s, buf, len);
         trace_ot_keymgr_dump_kdf_material(s->ot_id, what, hexstr);
+        g_free(what);
     }
 }
 
 static size_t ot_keymgr_kdf_append_rev_seed(OtKeyMgrState *s)
 {
     ot_keymgr_kdf_push_bytes(s, s->seeds[KEYMGR_SEED_REV], KEYMGR_SEED_BYTES);
-    ot_keymgr_dump_kdf_material(s, "REV_SEED", s->seeds[KEYMGR_SEED_REV],
-                                KEYMGR_SEED_BYTES);
+    ot_keymgr_dump_kdf_material(s, s->seeds[KEYMGR_SEED_REV], KEYMGR_SEED_BYTES,
+                                "REV_SEED");
     return KEYMGR_SEED_BYTES;
 }
 
@@ -1043,8 +1049,8 @@ static size_t ot_keymgr_kdf_append_rom_digest(OtKeyMgrState *s)
         s->op_state.valid_inputs = false;
     }
 
-    ot_keymgr_dump_kdf_material(s, "ROM_DIGEST", rom_digest,
-                                OT_ROM_DIGEST_BYTES);
+    ot_keymgr_dump_kdf_material(s, rom_digest, OT_ROM_DIGEST_BYTES,
+                                "ROM_DIGEST");
     return OT_ROM_DIGEST_BYTES;
 }
 
@@ -1061,8 +1067,8 @@ static size_t ot_keymgr_kdf_append_km_div(OtKeyMgrState *s)
         s->op_state.valid_inputs = false;
     }
 
-    ot_keymgr_dump_kdf_material(s, "KM_DIV", km_div.data,
-                                OT_LC_KEYMGR_DIV_BYTES);
+    ot_keymgr_dump_kdf_material(s, km_div.data, OT_LC_KEYMGR_DIV_BYTES,
+                                "KM_DIV");
     return OT_LC_KEYMGR_DIV_BYTES;
 }
 
@@ -1080,8 +1086,8 @@ static size_t ot_keymgr_kdf_append_dev_id(OtKeyMgrState *s)
         s->op_state.valid_inputs = false;
     }
 
-    ot_keymgr_dump_kdf_material(s, "DEVICE_ID", hw_cfg->device_id,
-                                OT_OTP_HWCFG_DEVICE_ID_BYTES);
+    ot_keymgr_dump_kdf_material(s, hw_cfg->device_id,
+                                OT_OTP_HWCFG_DEVICE_ID_BYTES, "DEVICE_ID");
     return OT_OTP_HWCFG_DEVICE_ID_BYTES;
 }
 
@@ -1114,8 +1120,8 @@ ot_keymgr_kdf_append_flash_seed(OtKeyMgrState *s, OtFlashKeyMgrSecretType type,
         s->op_state.valid_inputs = false;
     }
 
-    ot_keymgr_dump_kdf_material(s, seed_name, seed.secret,
-                                OT_FLASH_KEYMGR_SECRET_BYTES);
+    ot_keymgr_dump_kdf_material(s, seed.secret, OT_FLASH_KEYMGR_SECRET_BYTES,
+                                "%s", seed_name);
     return OT_FLASH_KEYMGR_SECRET_BYTES;
 }
 
@@ -1126,12 +1132,8 @@ static size_t ot_keymgr_kdf_append_sw_binding(OtKeyMgrState *s, OtKeyMgrCdi cdi)
 
     ot_keymgr_kdf_push_bytes(s, sw_binding, KEYMGR_SW_BINDING_BYTES);
 
-    char buf[32u];
-    const char *binding_suffix = "_SW_BINDING";
-    const char *cdi_name = CDI_NAME(cdi);
-    g_assert(strlen(binding_suffix) + strlen(cdi_name) + 1 < sizeof(buf));
-    snprintf(buf, sizeof(buf), "%s%s", cdi_name, binding_suffix);
-    ot_keymgr_dump_kdf_material(s, buf, sw_binding, KEYMGR_SW_BINDING_BYTES);
+    ot_keymgr_dump_kdf_material(s, sw_binding, KEYMGR_SW_BINDING_BYTES,
+                                "%s_SW_BINDING", CDI_NAME(cdi));
     return KEYMGR_SW_BINDING_BYTES;
 }
 
@@ -1139,7 +1141,7 @@ static size_t ot_keymgr_kdf_append_key_seed(
     OtKeyMgrState *s, const uint8_t *seed, const char *name)
 {
     ot_keymgr_kdf_push_bytes(s, seed, KEYMGR_SEED_BYTES);
-    ot_keymgr_dump_kdf_material(s, name, seed, KEYMGR_SEED_BYTES);
+    ot_keymgr_dump_kdf_material(s, seed, KEYMGR_SEED_BYTES, "%s", name);
 
     return KEYMGR_SEED_BYTES;
 }
@@ -1176,7 +1178,7 @@ ot_keymgr_kdf_append_destination_seed(OtKeyMgrState *s, OtKeyMgrDestSel dest)
 static size_t ot_keymgr_kdf_append_salt(OtKeyMgrState *s)
 {
     ot_keymgr_kdf_push_bytes(s, s->salt, KEYMGR_SALT_BYTES);
-    ot_keymgr_dump_kdf_material(s, "SALT", s->salt, KEYMGR_SALT_BYTES);
+    ot_keymgr_dump_kdf_material(s, s->salt, KEYMGR_SALT_BYTES, "SALT");
 
     return KEYMGR_SALT_BYTES;
 }
@@ -1186,7 +1188,7 @@ static size_t ot_keymgr_kdf_append_key_version(OtKeyMgrState *s)
     uint8_t buf[sizeof(uint32_t)];
     stl_le_p(buf, s->regs[R_KEY_VERSION]);
     ot_keymgr_kdf_push_bytes(s, buf, sizeof(uint32_t));
-    ot_keymgr_dump_kdf_material(s, "KEY_VERSION", buf, sizeof(uint32_t));
+    ot_keymgr_dump_kdf_material(s, buf, sizeof(uint32_t), "KEY_VERSION");
 
     return sizeof(uint32_t);
 }
