@@ -24,6 +24,7 @@
 #include "exec/helper-gen.h"
 #include "exec/target_page.h"
 #include "exec/translator.h"
+#include "accel/tcg/cpu-ldst.h"
 #include "exec/translation-block.h"
 #include "exec/log.h"
 #include "semihosting/semihost.h"
@@ -1378,8 +1379,7 @@ static void riscv_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
             unsigned page_ofs = ctx->base.pc_next & ~TARGET_PAGE_MASK;
 
             if (page_ofs > TARGET_PAGE_SIZE - MAX_INSN_LEN) {
-                uint16_t next_insn =
-                    translator_lduw(env, &ctx->base, ctx->base.pc_next);
+                uint16_t next_insn = cpu_lduw_code(env, ctx->base.pc_next);
                 int len = insn_len(next_insn);
 
                 if (!translator_is_same_page(&ctx->base, ctx->base.pc_next + len - 1)) {
