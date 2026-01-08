@@ -148,7 +148,7 @@ struct OtDevProxyState {
     unsigned initiator_uid; /* initiator output counter */
     uint32_t *rx_buffer; /* received payload */
 
-    CharBackend chr; /* communication device */
+    CharFrontend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
 };
 

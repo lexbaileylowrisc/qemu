@@ -239,7 +239,7 @@ struct OtIbexWrapperState {
     bool lc_ignore;
     bool alias_mode;
     bool dv_sim_status_exit;
-    CharBackend chr;
+    CharFrontend chr;
 };
 
 struct OtIbexWrapperClass {

@@ -166,7 +166,7 @@ struct OtUARTState {
     char *ot_id;
     char *clock_name;
     DeviceState *clock_src;
-    CharBackend chr;
+    CharFrontend chr;
     bool oversample_break; /* Should mock break in the oversampled VAL reg? */
     bool toggle_break; /* Are incoming breaks temporary or toggled? */
 };

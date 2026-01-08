@@ -418,7 +418,7 @@ const char *ot_common_lhexdump(const uint8_t *buf, size_t size, bool order,
 #include "io/channel-file.h"
 #endif
 
-void ot_common_ignore_chr_status_lines(CharBackend *chr)
+void ot_common_ignore_chr_status_lines(CharFrontend *chr)
 {
 /* it might be useful to move this to char-serial.c */
 #ifndef _WIN32

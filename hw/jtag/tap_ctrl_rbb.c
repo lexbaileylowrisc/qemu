@@ -94,7 +94,7 @@ typedef struct TapCtrlRbbState {
     guint watch_tag; /* tracker for comm device change */
 
     /* properties */
-    CharBackend chr;
+    CharFrontend chr;
     uint32_t idcode; /* TAP controller identifier */
     uint8_t ir_length; /* count of meaningful bits in ir */
     uint8_t idcode_inst; /* instruction to get ID code */

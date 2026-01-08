@@ -171,6 +171,7 @@ TYPED_FIELD(uint16_t, cboz_blocksize, 0)
 
 /* physical memory protection HW configuration */
 TYPED_FIELD(uint8_t,    pmp_regions, 0)
+TYPED_FIELD(uint32_t,   pmp_granularity, 0)
 TYPED_FIELD(uint8_t *,  pmp_cfg, NULL)
 TYPED_FIELD(uint32_t,   pmp_cfg_count, 0)
 TYPED_FIELD(uint64_t *, pmp_addr, NULL)

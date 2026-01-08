@@ -67,27 +67,16 @@ CPUState *cpu_create(const char *typename)
     return cpu;
 }
 
-/* Resetting the IRQ comes from across the code base so we take the
- * BQL here if we need to.  cpu_interrupt assumes it is held.*/
 void cpu_reset_interrupt(CPUState *cpu, int mask)
 {
-    bool need_lock = !bql_locked();
-
-    if (need_lock) {
-        bql_lock();
-    }
-    cpu->interrupt_request &= ~mask;
-    if (need_lock) {
-        bql_unlock();
-    }
+    qatomic_and(&cpu->interrupt_request, ~mask);
 }
 
 void cpu_exit(CPUState *cpu)
 {
-    qatomic_set(&cpu->exit_request, 1);
-    /* Ensure cpu_exec will see the exit request after TCG has exited.  */
-    smp_wmb();
-    qatomic_set(&cpu->neg.icount_decr.u16.high, -1);
+    /* Ensure cpu_exec will see the reason why the exit request was set.  */
+    qatomic_store_release(&cpu->exit_request, true);
+    qemu_cpu_kick(cpu);
 }
 
 static int cpu_common_gdb_read_register(CPUState *cpu, GByteArray *buf, int reg)
@@ -125,16 +114,6 @@ static void cpu_common_reset_enter(Object *obj, ResetType type)
     }
 }
 
-static void cpu_common_reset_exit(Object *obj, ResetType type)
-{
-    CPUState *cpu = CPU(obj);
-
-    if (qemu_loglevel_mask(CPU_LOG_RESET)) {
-        qemu_log("CPU Reset Exit (CPU %d) PC:0x%" VADDR_PRIx "\n",
-                 cpu->cpu_index, cpu->cc->get_pc(cpu));
-    }
-}
-
 static void cpu_common_reset_hold(Object *obj, ResetType type)
 {
     CPUState *cpu = CPU(obj);
@@ -150,6 +129,21 @@ static void cpu_common_reset_hold(Object *obj, ResetType type)
     cpu->cflags_next_tb = -1;
 
     cpu_exec_reset_hold(cpu);
+}
+
+static void cpu_common_reset_exit(Object *obj, ResetType type)
+{
+    if (qemu_loglevel_mask(CPU_LOG_RESET)) {
+        FILE *f = qemu_log_trylock();
+
+        if (f) {
+            CPUState *cpu = CPU(obj);
+
+            fprintf(f, "CPU Reset (CPU %d)\n", cpu->cpu_index);
+            cpu_dump_state(cpu, f, cpu->cc->reset_dump_flags);
+            qemu_log_unlock(f);
+        }
+    }
 }
 
 ObjectClass *cpu_class_by_name(const char *typename, const char *cpu_model)
@@ -310,6 +304,7 @@ void cpu_exec_unrealizefn(CPUState *cpu)
      * accel_cpu_common_unrealize, which may free fields using call_rcu.
      */
     accel_cpu_common_unrealize(cpu);
+    cpu_destroy_address_spaces(cpu);
 }
 
 static void cpu_common_initfn(Object *obj)

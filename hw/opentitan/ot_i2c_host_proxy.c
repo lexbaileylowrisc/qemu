@@ -80,7 +80,7 @@ struct OtI2CHostProxyState {
     /* device change tracker */
     guint watch_tag;
 
-    CharBackend chr;
+    CharFrontend chr;
 };
 
 struct OtI2CHostProxyClass {

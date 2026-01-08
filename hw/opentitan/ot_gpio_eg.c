@@ -138,7 +138,7 @@ struct OtGpioEgState {
     uint32_t reset_in; /* initial input levels */
     uint32_t reset_out; /* initial output levels */
     uint32_t reset_oe; /* initial output enable vs. hi-z levels */
-    CharBackend chr; /* communication device */
+    CharFrontend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
     bool wipe; /* whether to wipe the backend at reset */
 };

@@ -55,7 +55,7 @@ struct IbexDemoUARTState {
     MemoryRegion mmio;
     IbexIRQ irq;
 
-    CharBackend chr;
+    CharFrontend chr;
     guint watch_tag;
 
     Fifo8 rx_fifo;

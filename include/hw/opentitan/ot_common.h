@@ -327,7 +327,7 @@ AddressSpace *ot_common_get_local_address_space(DeviceState *s);
  *
  * @chr the character backend to configure.
  */
-void ot_common_ignore_chr_status_lines(CharBackend *chr);
+void ot_common_ignore_chr_status_lines(CharFrontend *chr);
 
 /* ------------------------------------------------------------------------ */
 /* String utilities */

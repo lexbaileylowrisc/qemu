@@ -546,11 +546,11 @@ struct OtUsbdevState {
     uint32_t buffer[USBDEV_BUFFER_SIZE / sizeof(uint32_t)];
 
     /* Communication device and buffer for management. */
-    CharBackend cmd_chr;
+    CharFrontend cmd_chr;
     char cmd_buf[CMD_BUF_SIZE];
     unsigned cmd_buf_pos;
     /* Communication device for the USB protocol. */
-    CharBackend usb_chr;
+    CharFrontend usb_chr;
     OtUsbdevServer usb_server;
 
     /*

@@ -156,7 +156,7 @@ struct OtGpioDjState {
     uint32_t reset_oe; /* initial output enable vs. hi-z levels */
     uint32_t reset_ie; /* initial input enable (reset_in active GPIOs) */
     uint32_t ibex_out; /* output w/ ibex_gpio (vs. tri-state) signalization */
-    CharBackend chr; /* communication device */
+    CharFrontend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
     bool wipe; /* whether to wipe the backend at reset */
 };

@@ -495,7 +495,7 @@ struct OtSPIDeviceState {
     /* Properties */
     char *ot_id;
     OtSPIHostState *spi_host; /* downstream SPI Host */
-    CharBackend chr; /* communication device */
+    CharFrontend chr; /* communication device */
     guint watch_tag; /* tracker for comm device change */
 };
 

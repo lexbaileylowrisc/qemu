@@ -1358,14 +1358,28 @@ static void ot_clkmgr_realize(DeviceState *dev, Error **errp)
     g_list_foreach(s->clocks, &ot_clkmgr_assign_top, s);
     g_assert(s->top_count == top_count);
 
+    Error *err_warn;
+
     ot_clkmgr_parse_loose_clocks(s, &error_fatal);
     /* not fatal per se, but highly likely to lead to missing clocks */
-    ot_clkmgr_parse_derived_clocks(s, &error_warn);
+    err_warn = NULL;
+    ot_clkmgr_parse_derived_clocks(s, &err_warn);
+    if (err_warn) {
+        warn_report_err(err_warn);
+    }
     /* at least one group is required */
     ot_clkmgr_parse_groups(s, &error_fatal);
     /* following configs are not mandatory, however always defined */
-    ot_clkmgr_parse_sw_cg(s, &error_warn);
-    unsigned hint_count = ot_clkmgr_parse_hint(s, &error_warn);
+    err_warn = NULL;
+    ot_clkmgr_parse_sw_cg(s, &err_warn);
+    if (err_warn) {
+        warn_report_err(err_warn);
+    }
+    err_warn = NULL;
+    unsigned hint_count = ot_clkmgr_parse_hint(s, &err_warn);
+    if (err_warn) {
+        warn_report_err(err_warn);
+    }
 
     s->clock_count = g_list_length(s->clocks);
 

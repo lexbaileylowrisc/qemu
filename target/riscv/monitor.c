@@ -23,6 +23,7 @@
 #include "cpu_bits.h"
 #include "monitor/monitor.h"
 #include "monitor/hmp-target.h"
+#include "system/memory.h"
 
 #ifdef TARGET_RISCV64
 #define PTE_HEADER_FIELDS       "vaddr            paddr            "\
@@ -77,11 +78,13 @@ static void print_pte(Monitor *mon, int va_bits, target_ulong vaddr,
                    attr & PTE_D ? 'd' : '-');
 }
 
-static void walk_pte(Monitor *mon, hwaddr base, target_ulong start,
+static void walk_pte(Monitor *mon, AddressSpace *as,
+                     hwaddr base, target_ulong start,
                      int level, int ptidxbits, int ptesize, int va_bits,
                      target_ulong *vbase, hwaddr *pbase, hwaddr *last_paddr,
                      target_ulong *last_size, int *last_attr)
 {
+    const MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
     hwaddr pte_addr;
     hwaddr paddr;
     target_ulong last_start = -1;
@@ -100,7 +103,7 @@ static void walk_pte(Monitor *mon, hwaddr base, target_ulong start,
 
     for (idx = 0; idx < (1UL << ptidxbits); idx++) {
         pte_addr = base + idx * ptesize;
-        cpu_physical_memory_read(pte_addr, &pte, ptesize);
+        address_space_read(as, pte_addr, attrs, &pte, ptesize);
 
         paddr = (hwaddr)(pte >> PTE_PPN_SHIFT) << PGSHIFT;
         attr = pte & 0xff;
@@ -132,7 +135,7 @@ static void walk_pte(Monitor *mon, hwaddr base, target_ulong start,
                 *last_size = pgsize;
             } else {
                 /* pointer to the next level of the page table */
-                walk_pte(mon, paddr, start, level - 1, ptidxbits, ptesize,
+                walk_pte(mon, as, paddr, start, level - 1, ptidxbits, ptesize,
                          va_bits, vbase, pbase, last_paddr,
                          last_size, last_attr);
             }
@@ -145,6 +148,7 @@ static void walk_pte(Monitor *mon, hwaddr base, target_ulong start,
 
 static void mem_info_svxx(Monitor *mon, CPUArchState *env)
 {
+    AddressSpace *as = env_cpu(env)->as;
     int levels, ptidxbits, ptesize, vm, va_bits;
     hwaddr base;
     target_ulong vbase;
@@ -199,7 +203,7 @@ static void mem_info_svxx(Monitor *mon, CPUArchState *env)
     last_attr = 0;
 
     /* walk page tables, starting from address 0 */
-    walk_pte(mon, base, 0, levels - 1, ptidxbits, ptesize, va_bits,
+    walk_pte(mon, as, base, 0, levels - 1, ptidxbits, ptesize, va_bits,
              &vbase, &pbase, &last_paddr, &last_size, &last_attr);
 
     /* don't forget the last one */
@@ -235,90 +239,4 @@ void hmp_info_mem(Monitor *mon, const QDict *qdict)
     }
 
     mem_info_svxx(mon, env);
-}
-
-static const MonitorDef monitor_defs[] = {
-    { "pc",  offsetof(CPURISCVState, pc) },
-    { "x0",  offsetof(CPURISCVState, gpr[0]) },
-    { "x1",  offsetof(CPURISCVState, gpr[1]) },
-    { "x2",  offsetof(CPURISCVState, gpr[2]) },
-    { "x3",  offsetof(CPURISCVState, gpr[3]) },
-    { "x4",  offsetof(CPURISCVState, gpr[4]) },
-    { "x5",  offsetof(CPURISCVState, gpr[5]) },
-    { "x6",  offsetof(CPURISCVState, gpr[6]) },
-    { "x7",  offsetof(CPURISCVState, gpr[7]) },
-    { "x8",  offsetof(CPURISCVState, gpr[8]) },
-    { "x9",  offsetof(CPURISCVState, gpr[9]) },
-    { "x10", offsetof(CPURISCVState, gpr[10]) },
-    { "x11", offsetof(CPURISCVState, gpr[11]) },
-    { "x12", offsetof(CPURISCVState, gpr[12]) },
-    { "x13", offsetof(CPURISCVState, gpr[13]) },
-    { "x14", offsetof(CPURISCVState, gpr[14]) },
-    { "x15", offsetof(CPURISCVState, gpr[15]) },
-    { "x16", offsetof(CPURISCVState, gpr[16]) },
-    { "x17", offsetof(CPURISCVState, gpr[17]) },
-    { "x18", offsetof(CPURISCVState, gpr[18]) },
-    { "x19", offsetof(CPURISCVState, gpr[19]) },
-    { "x20", offsetof(CPURISCVState, gpr[20]) },
-    { "x21", offsetof(CPURISCVState, gpr[21]) },
-    { "x22", offsetof(CPURISCVState, gpr[22]) },
-    { "x23", offsetof(CPURISCVState, gpr[23]) },
-    { "x24", offsetof(CPURISCVState, gpr[24]) },
-    { "x25", offsetof(CPURISCVState, gpr[25]) },
-    { "x26", offsetof(CPURISCVState, gpr[26]) },
-    { "x27", offsetof(CPURISCVState, gpr[27]) },
-    { "x28", offsetof(CPURISCVState, gpr[28]) },
-    { "x29", offsetof(CPURISCVState, gpr[29]) },
-    { "x30", offsetof(CPURISCVState, gpr[30]) },
-    { "x31", offsetof(CPURISCVState, gpr[31]) },
-    { "f0",  offsetof(CPURISCVState, fpr[0]) },
-    { "f1",  offsetof(CPURISCVState, fpr[1]) },
-    { "f2",  offsetof(CPURISCVState, fpr[2]) },
-    { "f3",  offsetof(CPURISCVState, fpr[3]) },
-    { "f4",  offsetof(CPURISCVState, fpr[4]) },
-    { "f5",  offsetof(CPURISCVState, fpr[5]) },
-    { "f6",  offsetof(CPURISCVState, fpr[6]) },
-    { "f7",  offsetof(CPURISCVState, fpr[7]) },
-    { "f8",  offsetof(CPURISCVState, fpr[8]) },
-    { "f9",  offsetof(CPURISCVState, fpr[9]) },
-    { "f10", offsetof(CPURISCVState, fpr[10]) },
-    { "f11", offsetof(CPURISCVState, fpr[11]) },
-    { "f12", offsetof(CPURISCVState, fpr[12]) },
-    { "f13", offsetof(CPURISCVState, fpr[13]) },
-    { "f14", offsetof(CPURISCVState, fpr[14]) },
-    { "f15", offsetof(CPURISCVState, fpr[15]) },
-    { "f16", offsetof(CPURISCVState, fpr[16]) },
-    { "f17", offsetof(CPURISCVState, fpr[17]) },
-    { "f18", offsetof(CPURISCVState, fpr[18]) },
-    { "f19", offsetof(CPURISCVState, fpr[19]) },
-    { "f20", offsetof(CPURISCVState, fpr[20]) },
-    { "f21", offsetof(CPURISCVState, fpr[21]) },
-    { "f22", offsetof(CPURISCVState, fpr[22]) },
-    { "f23", offsetof(CPURISCVState, fpr[23]) },
-    { "f24", offsetof(CPURISCVState, fpr[24]) },
-    { "f25", offsetof(CPURISCVState, fpr[25]) },
-    { "f26", offsetof(CPURISCVState, fpr[26]) },
-    { "f27", offsetof(CPURISCVState, fpr[27]) },
-    { "f28", offsetof(CPURISCVState, fpr[28]) },
-    { "f29", offsetof(CPURISCVState, fpr[29]) },
-    { "f30", offsetof(CPURISCVState, fpr[30]) },
-    { "f31", offsetof(CPURISCVState, fpr[31]) },
-    { "satp", offsetof(CPURISCVState, satp) },
-    { "stval", offsetof(CPURISCVState, stval) },
-    { "medeleg", offsetof(CPURISCVState, medeleg) },
-    { "stvec", offsetof(CPURISCVState, stvec) },
-    { "sepc", offsetof(CPURISCVState, sepc) },
-    { "scause", offsetof(CPURISCVState, scause) },
-    { "mtvec", offsetof(CPURISCVState, mtvec) },
-    { "mepc", offsetof(CPURISCVState, mepc) },
-    { "mcause", offsetof(CPURISCVState, mcause) },
-    { "mtval", offsetof(CPURISCVState, mtval) },
-    { "sscratch", offsetof(CPURISCVState, sscratch) },
-    { "mscratch", offsetof(CPURISCVState, mscratch) },
-    { NULL },
-};
-
-const MonitorDef *target_monitor_defs(void)
-{
-    return monitor_defs;
 }
